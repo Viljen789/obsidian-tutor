@@ -1,0 +1,35 @@
+{
+  "name": "@tutor/functions",
+  "version": "0.1.0",
+  "private": true,
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsup",
+    "build:watch": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:rules": "firebase emulators:exec --only firestore,storage --project demo-tutor \"vitest run --config vitest.rules.config.ts\""
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.1",
+    "@tutor/shared": "*",
+    "adm-zip": "^0.5.16",
+    "firebase-admin": "^13.0.2",
+    "firebase-functions": "^6.3.2",
+    "gray-matter": "^4.0.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "@types/adm-zip": "^0.5.7",
+    "@types/node": "^20.17.0",
+    "firebase-functions-test": "^3.4.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": "20"
+  }
+}

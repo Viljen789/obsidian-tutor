@@ -1,0 +1,46 @@
+/**
+ * submitAnswer flow — the core of the teach->grade->update loop.
+ *
+ * Composes AI grading (Phase 2) with the pure mastery update (Phase 3) and
+ * persists the new learner state, returning both the feedback and the updated
+ * mastery. This MUST stay server-side — grading and SM-2 are never
+ * client-trusted.
+ *
+ * NOTE: the engine (applyGrade/newMastery) is implemented in parallel and
+ * currently throws "not implemented" — that is expected. This flow is wired to
+ * the contract; the orchestrator verifies the full loop live in Phase 5.
+ */
+import type { SubmitAnswerRequest, SubmitAnswerResponse } from "@tutor/shared";
+import { authedCallable, HttpsError } from "../lib/callable";
+import { ANTHROPIC_API_KEY } from "../lib/anthropic";
+import { getConcept, getMastery, setMastery } from "../lib/firebase";
+import { gradeAnswer } from "../ai/index";
+import { applyGrade, newMastery } from "../engine/index";
+
+export const submitAnswer = authedCallable<SubmitAnswerRequest, SubmitAnswerResponse>(
+  { secrets: [ANTHROPIC_API_KEY] },
+  async (data, { uid }): Promise<SubmitAnswerResponse> => {
+    const concept = await getConcept(uid, data.conceptId);
+    if (!concept) {
+      throw new HttpsError("not-found", `Concept not found: ${data.conceptId}`);
+    }
+
+    // Grade the free-text answer against the concept notes (server-side).
+    const grade = await gradeAnswer({
+      question: data.question,
+      answer: data.answer,
+      conceptTitle: concept.title,
+      conceptContext: concept.bodyMarkdown,
+    });
+
+    // Load existing learner state, or start fresh for a never-seen concept.
+    const current = (await getMastery(uid, data.conceptId)) ?? newMastery(data.conceptId);
+
+    // Advance SM-2 + mastery deterministically (time injected, engine stays pure).
+    const mastery = applyGrade(current, grade.quality, grade.score, Date.now());
+
+    await setMastery(uid, mastery);
+
+    return { grade, mastery };
+  },
+);
