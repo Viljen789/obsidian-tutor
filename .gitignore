@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Build output
+shared/dist/
+functions/lib/
+web/dist/
+
+# Firebase / emulator
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+*-debug.log
+emulator-data/
+
+# Secrets & env — NEVER commit
+.env
+.env.*
+!.env.example
+.secret.local
+*.secret.local
+!*.secret.local.example
+*.key
+serviceAccount*.json
+
+# Editor / OS / local agent tooling
+.DS_Store
+.vscode/
+.idea/
+.claude/
+*.local
+
+# Test artifacts
+coverage/
+
+# Generated sample vault archive (rebuild with `npm run seed`)
+sample-vault.zip

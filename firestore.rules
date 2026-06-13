@@ -1,0 +1,42 @@
+rules_version = '2';
+
+// Every document lives under users/{uid}. A signed-in user may touch ONLY their
+// own subtree. Concepts, mastery, and cached explanations are written exclusively
+// by Cloud Functions (admin SDK bypasses rules), so a client can never forge a
+// mastery score or grade — that logic is server-side and not client-trusted.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    match /users/{uid} {
+      // Profile + settings: the owner may read and write.
+      allow read, write: if isOwner(uid);
+
+      // Concept graph: client reads, only Functions write.
+      match /concepts/{conceptId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      // Learner model: client reads, only Functions write (grading is server-side).
+      match /mastery/{conceptId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      // Cached explanations: client reads, only Functions write.
+      match /explanationCache/{key} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      // Sessions: low-stakes, the owner may read and write.
+      match /sessions/{sessionId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+  }
+}
