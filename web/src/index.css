@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Paper-and-ink theme. Colors are space-separated RGB triples so Tailwind's
+   `rgb(var(--x) / <alpha-value>)` opacity utilities work. */
+:root {
+  --bg: 250 249 246;
+  --surface: 255 255 255;
+  --border: 230 226 219;
+  --ink: 28 27 25;
+  --muted: 116 112 104;
+  --accent: 79 70 229; /* learn — indigo */
+  --review: 180 83 9; /* review — amber */
+}
+
+.dark {
+  --bg: 23 22 20;
+  --surface: 32 31 28;
+  --border: 54 51 47;
+  --ink: 237 235 230;
+  --muted: 162 157 149;
+  --accent: 129 140 248;
+  --review: 251 191 36;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-bg text-ink font-sans antialiased;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* A quieter scrollbar that suits the paper aesthetic. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--border)) transparent;
+}
+
+/* Reading column for explanations uses the serif face. Tuned for a calm,
+   book-like measure: comfortable leading, restrained heading weights, and
+   links that pick up the ambient accent rather than a default blue. */
+.prose-reading {
+  @apply prose prose-stone max-w-none font-serif text-[1.075rem] leading-[1.75];
+}
+.dark .prose-reading {
+  @apply prose-invert;
+}
+.prose-reading :where(h1, h2, h3) {
+  @apply font-serif font-medium tracking-tight text-ink;
+}
+.prose-reading :where(h2) {
+  @apply mt-9 text-[1.4rem];
+}
+.prose-reading :where(h3) {
+  @apply mt-7 text-[1.15rem];
+}
+.prose-reading :where(a) {
+  @apply font-sans font-medium no-underline;
+  color: rgb(var(--accent));
+  border-bottom: 1px solid rgb(var(--accent) / 0.35);
+}
+.prose-reading :where(code) {
+  @apply rounded bg-ink/[0.05] px-1 py-0.5 font-sans text-[0.85em] font-medium;
+  color: rgb(var(--ink));
+}
+.prose-reading :where(code)::before,
+.prose-reading :where(code)::after {
+  content: none;
+}
+.prose-reading :where(pre) {
+  @apply rounded-xl border border-border bg-ink/[0.03] text-[0.9rem];
+}
+.dark .prose-reading :where(pre) {
+  @apply bg-black/30;
+}
+.prose-reading :where(blockquote) {
+  @apply font-normal not-italic text-muted;
+  border-inline-start-color: rgb(var(--border));
+}
+
+/* Micro-interactions — kept subtle and brief, never bouncy. */
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-rise {
+  animation: fade-rise 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade {
+  animation: fade-in 0.4s ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise,
+  .animate-fade {
+    animation: none;
+  }
+}

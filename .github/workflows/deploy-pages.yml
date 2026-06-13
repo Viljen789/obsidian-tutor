@@ -1,0 +1,53 @@
+name: Deploy web preview to GitHub Pages
+
+# Builds the static frontend and publishes it to GitHub Pages. NOTE: this hosts
+# the UI only — sign-in, Firestore, and the AI Cloud Functions need a Firebase
+# backend, which Pages cannot run. With no Firebase config the site renders the
+# UI in a read-only "preview" mode. For a fully working app, deploy to Firebase
+# Hosting instead (`firebase deploy`).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Build web (Pages preview)
+        env:
+          # Project Pages are served from /<repo>/ — match Vite's base to it.
+          VITE_BASE: /${{ github.event.repository.name }}/
+          VITE_USE_EMULATORS: "false"
+        run: |
+          npm -w web run build
+          cp web/dist/index.html web/dist/404.html   # SPA fallback for deep links
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
