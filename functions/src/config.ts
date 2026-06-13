@@ -26,10 +26,10 @@ export const MODEL_SETS = {
 /** Hard output-token caps per call — a cost/latency guardrail (see §7). */
 export const TOKEN_CAPS = {
   explain: 1600,
-  questions: 900,
-  grade: 800,
-  hint: 250,
-  classify: 256,
+  questions: 1200,
+  grade: 1100,
+  hint: 400,
+  classify: 512,
 } as const;
 
 export const DEFAULTS = {

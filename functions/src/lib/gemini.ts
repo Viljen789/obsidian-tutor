@@ -41,6 +41,8 @@ export async function completeText(args: CompleteArgs): Promise<string> {
     config: {
       systemInstruction: args.system,
       maxOutputTokens: args.maxTokens,
+      // Disable Flash's "thinking" — it would consume the output-token budget.
+      thinkingConfig: { thinkingBudget: 0 },
     },
   });
   return (res.text ?? "").trim();
@@ -78,6 +80,9 @@ export async function completeStructured<T>(
       systemInstruction: args.system,
       maxOutputTokens: args.maxTokens,
       responseMimeType: "application/json",
+      // Disable Flash's "thinking" — otherwise it eats the output budget and the
+      // JSON gets truncated mid-string ("Unterminated string in JSON").
+      thinkingConfig: { thinkingBudget: 0 },
     },
   });
 
