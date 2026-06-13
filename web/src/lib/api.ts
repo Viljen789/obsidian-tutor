@@ -26,4 +26,5 @@ export const api = {
   submitAnswer: callable("submitAnswer"),
   requestHint: callable("requestHint"),
   nextItem: callable("nextItem"),
+  deleteSubject: callable("deleteSubject"),
 };

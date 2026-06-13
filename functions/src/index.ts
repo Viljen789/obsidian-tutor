@@ -20,3 +20,6 @@ export { submitAnswer } from "./flows/submitAnswer";
 
 // Phase 3 — adaptive sequencer
 export { nextItem } from "./engine/index";
+
+// Vault management
+export { deleteSubject } from "./flows/deleteSubject";

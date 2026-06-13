@@ -8,20 +8,22 @@
  * Plus an always-available vault-import entry point. First-time users (no
  * concepts) get a focused empty state that points straight at import.
  */
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   GraduationCap,
   Library,
   RotateCcw,
   Sparkles,
+  Trash2,
   Upload,
 } from "lucide-react";
 import type { Concept, Mastery, NextItem } from "@tutor/shared";
 import { api } from "../lib/api";
-import { useConcepts, useMastery } from "../lib/firestore-hooks";
+import { useAuth } from "../lib/auth";
+import { qk, useConcepts, useMastery } from "../lib/firestore-hooks";
 import {
   Button,
   Card,
@@ -321,18 +323,81 @@ function DueSection({
 }
 
 function SubjectCard({ group, onOpen }: { group: SubjectGroup; onOpen: () => void }) {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+
+  const count = group.concepts.length;
+
+  const del = useMutation({
+    mutationFn: () => api.deleteSubject({ subject: group.subject }),
+    onSuccess: () => {
+      // The subject's concepts + mastery no longer exist server-side; refetch
+      // both so the row disappears and the totals above update.
+      const uid = user?.uid ?? "anon";
+      void qc.invalidateQueries({ queryKey: qk.concepts(uid) });
+      void qc.invalidateQueries({ queryKey: qk.mastery(uid) });
+    },
+  });
+
+  // The confirmation replaces the row in place — a calm, modal-free affordance.
+  if (confirming) {
+    return (
+      <Card className="border-red-500/30 bg-red-500/[0.02]">
+        <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-[0.95rem] font-medium text-ink">
+              Delete{" "}
+              <span className="font-semibold">
+                {count} concept{count === 1 ? "" : "s"}
+              </span>{" "}
+              in {group.subject}?
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted">
+              {del.isError
+                ? "That didn't go through. Please try again."
+                : "This removes the concepts and all your progress on them. It can't be undone."}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              variant="ghost"
+              tone="neutral"
+              size="sm"
+              disabled={del.isPending}
+              onClick={() => {
+                del.reset();
+                setConfirming(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              loading={del.isPending}
+              onClick={() => del.mutate()}
+              className="bg-red-600 text-white hover:opacity-90 focus-visible:ring-red-600/40"
+            >
+              {del.isPending ? "Deleting" : del.isError ? "Try again" : "Delete"}
+            </Button>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
   return (
-    <Card>
+    <Card className="group/card relative">
       <button
         onClick={onOpen}
-        className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-ink/[0.02]"
+        className="flex w-full items-center gap-4 px-5 py-4 pr-12 text-left transition-colors hover:bg-ink/[0.02]"
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <SubjectDot subject={group.subject} />
             <h3 className="truncate font-medium text-ink">{group.subject}</h3>
             <span className="text-xs text-muted">
-              {group.concepts.length} concept{group.concepts.length === 1 ? "" : "s"}
+              {count} concept{count === 1 ? "" : "s"}
             </span>
           </div>
           <div className="mt-2.5 flex items-center gap-3">
@@ -344,6 +409,15 @@ function SubjectCard({ group, onOpen }: { group: SubjectGroup; onOpen: () => voi
           <p className="text-sm font-medium text-ink">{group.mastered}</p>
           <p className="text-[0.7rem] uppercase tracking-wide text-muted">{STATUS_LABEL.mastered}</p>
         </div>
+      </button>
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        aria-label={`Delete ${group.subject} and its ${count} concept${count === 1 ? "" : "s"}`}
+        title={`Delete ${group.subject}`}
+        className="absolute right-3 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-muted opacity-0 transition-all hover:bg-red-500/10 hover:text-red-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40 group-hover/card:opacity-100"
+      >
+        <Trash2 size={15} />
       </button>
     </Card>
   );

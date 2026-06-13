@@ -24,6 +24,7 @@ export const CALLABLE = {
   submitAnswer: "submitAnswer",
   requestHint: "requestHint",
   nextItem: "nextItem",
+  deleteSubject: "deleteSubject",
 } as const;
 
 export type CallableName = (typeof CALLABLE)[keyof typeof CALLABLE];
@@ -40,6 +41,17 @@ export interface IngestVaultResponse {
   subjects: string[];
   /** Non-fatal issues: unresolved wikilinks, notes with no frontmatter, etc. */
   warnings: string[];
+}
+
+// --- deleteSubject --------------------------------------------------------
+// Removes every concept in a subject, plus its mastery and cached explanations.
+// Server-side (admin) — used to clean up a mistaken or stale import.
+export interface DeleteSubjectRequest {
+  subject: string;
+}
+export interface DeleteSubjectResponse {
+  subject: string;
+  deletedConcepts: number;
 }
 
 // --- explainConcept -------------------------------------------------------
@@ -127,6 +139,7 @@ export interface CallableContract {
   submitAnswer: { request: SubmitAnswerRequest; response: SubmitAnswerResponse };
   requestHint: { request: RequestHintRequest; response: RequestHintResponse };
   nextItem: { request: NextItemRequest; response: NextItemResponse };
+  deleteSubject: { request: DeleteSubjectRequest; response: DeleteSubjectResponse };
 }
 
 // Re-export the domain types most consumers need alongside the API types.

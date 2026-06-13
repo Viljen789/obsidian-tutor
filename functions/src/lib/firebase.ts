@@ -68,6 +68,40 @@ export async function upsertConcepts(uid: string, concepts: Concept[]): Promise<
   }
 }
 
+/**
+ * Deletes every concept in a subject along with its mastery doc and all cached
+ * explanations (one per depth). The inverse of an import — used to clean up a
+ * mistaken or stale vault import.
+ *
+ * Each concept fans out to up to 5 deletes (1 concept + 1 mastery + 3 cache
+ * depths), so we chunk by concept to stay under Firestore's 500-ops-per-batch
+ * limit (90 * 5 = 450). Batches commit sequentially. Returns the number of
+ * concepts deleted (0 if the subject has none).
+ */
+export async function deleteSubjectData(uid: string, subject: string): Promise<number> {
+  const snap = await db
+    .collection(paths.concepts(uid))
+    .where("subject", "==", subject)
+    .get();
+  const conceptIds = snap.docs.map((d) => d.id);
+
+  const DEPTHS: ExplanationDepth[] = ["refresher", "standard", "deep"];
+  const CONCEPTS_PER_BATCH = 90; // 90 * 5 deletes = 450, under the 500 limit
+  for (let i = 0; i < conceptIds.length; i += CONCEPTS_PER_BATCH) {
+    const batch = db.batch();
+    for (const id of conceptIds.slice(i, i + CONCEPTS_PER_BATCH)) {
+      batch.delete(db.doc(paths.concept(uid, id)));
+      batch.delete(db.doc(paths.masteryDoc(uid, id)));
+      for (const depth of DEPTHS) {
+        batch.delete(db.doc(paths.explanationCacheDoc(uid, id, depth)));
+      }
+    }
+    await batch.commit();
+  }
+
+  return conceptIds.length;
+}
+
 // --- Mastery (learner model) ---------------------------------------------
 
 export async function getMastery(uid: string, conceptId: string): Promise<Mastery | null> {
