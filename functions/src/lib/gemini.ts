@@ -13,14 +13,13 @@
  * the code already declares — so callers get a typed, validated object either way.
  */
 import { GoogleGenAI } from "@google/genai";
-import { defineSecret } from "firebase-functions/params";
 import { z, type ZodType } from "zod";
 import type { CompleteArgs } from "./anthropic";
 
-export const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
-
 const useVertex = process.env.LLM_PROVIDER === "gemini-vertex";
 
+// The key arrives as an env var when GEMINI_API_KEY is bound to the function
+// (lib/llm.ts). Vertex needs no key — it uses the function's service account.
 let client: GoogleGenAI | null = null;
 function getClient(): GoogleGenAI {
   if (!client) {
@@ -30,7 +29,7 @@ function getClient(): GoogleGenAI {
           project: process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT,
           location: process.env.VERTEX_LOCATION ?? "us-central1",
         })
-      : new GoogleGenAI({ apiKey: GEMINI_API_KEY.value() });
+      : new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   }
   return client;
 }

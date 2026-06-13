@@ -6,14 +6,13 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { defineSecret } from "firebase-functions/params";
 import type { ZodType } from "zod";
 
-export const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
-
+// The key arrives as an env var when its secret is bound to the function
+// (lib/llm.ts declares + binds only the active provider's secret).
 let client: Anthropic | null = null;
 function getClient(): Anthropic {
-  if (!client) client = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
+  if (!client) client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   return client;
 }
 

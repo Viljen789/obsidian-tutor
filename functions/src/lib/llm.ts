@@ -10,6 +10,7 @@
  * Only the active provider's secret is bound to the callables, so deploying with
  * just one key set never trips "secret not found".
  */
+import { defineSecret } from "firebase-functions/params";
 import { MODEL_SETS } from "../config";
 import * as anthropic from "./anthropic";
 import * as gemini from "./gemini";
@@ -24,13 +25,20 @@ const isGemini = PROVIDER !== "anthropic";
 /** Model ids for the active provider (see config.ts → MODEL_SETS). */
 export const MODELS = isGemini ? MODEL_SETS.gemini : MODEL_SETS.anthropic;
 
-/** Secret(s) to bind on AI callables — only the active provider's. Vertex uses ADC. */
-export const llmSecrets =
+/**
+ * Declare + bind ONLY the active provider's secret. Declaring a secret makes the
+ * deploy demand a value for it, so declaring both would force users to set an
+ * Anthropic key just to run Gemini. Vertex uses the service account (no secret).
+ */
+const activeSecret =
   PROVIDER === "anthropic"
-    ? [anthropic.ANTHROPIC_API_KEY]
+    ? defineSecret("ANTHROPIC_API_KEY")
     : PROVIDER === "gemini"
-      ? [gemini.GEMINI_API_KEY]
-      : [];
+      ? defineSecret("GEMINI_API_KEY")
+      : null;
+
+/** Secret(s) to bind on AI callables. */
+export const llmSecrets = activeSecret ? [activeSecret] : [];
 
 export const completeText: typeof anthropic.completeText = isGemini
   ? gemini.completeText
