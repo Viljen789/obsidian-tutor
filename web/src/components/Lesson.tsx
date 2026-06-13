@@ -13,7 +13,7 @@
  * gracefully: explanation, questions, hint, and grading each have their own
  * loading / error handling and never blank the screen.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -25,12 +25,17 @@ import {
   XCircle,
 } from "lucide-react";
 import type {
+  Concept,
   ExplainConceptResponse,
   GradeResult,
   Question,
 } from "@tutor/shared";
 import { api } from "../lib/api";
-import { useConcept, useInvalidateMastery } from "../lib/firestore-hooks";
+import {
+  useConcept,
+  useConcepts,
+  useInvalidateMastery,
+} from "../lib/firestore-hooks";
 import {
   Button,
   Card,
@@ -50,6 +55,44 @@ const QUESTION_TYPE_LABEL: Record<Question["type"], string> = {
   why: "Why",
 };
 
+/** Which markdown the reading column is showing. */
+type ReadingMode = "explanation" | "note";
+
+/** Normalise a wikilink target / title for case-insensitive matching. */
+function normaliseKey(s: string): string {
+  return s.trim().toLowerCase();
+}
+
+/**
+ * Build a `[[wikilink]]` resolver from the user's concepts. A target resolves to
+ * a conceptId by matching, case-insensitively, either the concept title or its
+ * source filename (the basename of `sourcePath` without extension) — the two
+ * spellings an Obsidian author naturally links by. Returns `null` for unknown
+ * targets so the renderer can keep them as quiet text.
+ */
+function useWikiResolver(
+  concepts: Concept[] | undefined,
+): (target: string) => string | null {
+  const index = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of concepts ?? []) {
+      map.set(normaliseKey(c.title), c.id);
+      // "Databases/Indexing.md" -> "indexing"
+      const base = c.sourcePath
+        .split("/")
+        .pop()
+        ?.replace(/\.[^.]+$/, "");
+      if (base) map.set(normaliseKey(base), c.id);
+    }
+    return map;
+  }, [concepts]);
+
+  return useCallback(
+    (target: string) => index.get(normaliseKey(target)) ?? null,
+    [index],
+  );
+}
+
 export function Lesson({
   conceptId,
   tone,
@@ -58,7 +101,14 @@ export function Lesson({
   tone: Tone;
 }) {
   const conceptQuery = useConcept(conceptId);
+  const conceptsQuery = useConcepts();
   const invalidateMastery = useInvalidateMastery();
+  const resolveWiki = useWikiResolver(conceptsQuery.data);
+
+  // Reading column: the AI's intuition-first explanation, or the learner's own
+  // raw note. Defaults to the explanation; resets when the concept changes.
+  const [reading, setReading] = useState<ReadingMode>("explanation");
+  useEffect(() => setReading("explanation"), [conceptId]);
 
   // --- Explanation ---------------------------------------------------------
   const explain = useQuery({
@@ -88,6 +138,10 @@ export function Lesson({
         subject={conceptQuery.data?.subject}
         query={explain}
         onRetry={() => void explain.refetch()}
+        reading={reading}
+        onReadingChange={setReading}
+        note={conceptQuery.data?.bodyMarkdown}
+        resolveWiki={resolveWiki}
       />
 
       {/* Q&A only appears once an explanation exists — you read, then practise. */}
@@ -134,57 +188,142 @@ function ExplanationBlock({
   subject,
   query,
   onRetry,
+  reading,
+  onReadingChange,
+  note,
+  resolveWiki,
 }: {
   tone: Tone;
   title: string;
   subject?: string;
   query: ReturnType<typeof useQuery<ExplainConceptResponse>>;
   onRetry: () => void;
+  reading: ReadingMode;
+  onReadingChange: (mode: ReadingMode) => void;
+  note?: string;
+  resolveWiki: (target: string) => string | null;
 }) {
+  // The "Your note" tab is only meaningful when the concept has a raw body.
+  const hasNote = !!note && note.trim().length > 0;
+  const showNote = reading === "note" && hasNote;
+
   return (
     <article>
       <header className="mb-5">
         <div className="flex flex-wrap items-center gap-2">
           <Eyebrow tone={tone}>{subject ?? "Lesson"}</Eyebrow>
-          {query.data?.depth && (
+          {!showNote && query.data?.depth && (
             <Pill tone={tone} className="capitalize">
               {query.data.depth}
             </Pill>
           )}
-          {query.data?.cached && (
+          {!showNote && query.data?.cached && (
             <span className="text-[0.7rem] text-muted">from cache</span>
           )}
         </div>
-        <h1 className="mt-2 font-serif text-3xl tracking-tight text-ink sm:text-[2.1rem]">
-          {title}
-        </h1>
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+          <h1 className="font-serif text-3xl tracking-tight text-ink sm:text-[2.1rem]">
+            {title}
+          </h1>
+          {hasNote && (
+            <ReadingToggle
+              tone={tone}
+              value={reading}
+              onChange={onReadingChange}
+            />
+          )}
+        </div>
       </header>
 
-      {query.isPending && (
-        <div className="space-y-3 py-2">
-          <Skeleton className="h-4 w-2/3" />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-11/12" />
-          <Skeleton className="h-4 w-5/6" />
-          <div className="pt-3" />
-          <Skeleton className="h-4 w-3/4" />
-          <Skeleton className="h-4 w-full" />
-          <Spinner label="Composing your explanation…" />
+      {/* Your note — the learner's raw vault markdown, rendered as-is. Independent
+          of the explanation request, so it's readable even if that failed. */}
+      {showNote && (
+        <div className="animate-fade">
+          <Markdown resolveWiki={resolveWiki}>{note!}</Markdown>
         </div>
       )}
 
-      {query.isError && (
-        <Card>
-          <ErrorState
-            title="The explanation didn't arrive"
-            description="The tutor couldn't write this lesson just now. Give it another moment."
-            onRetry={onRetry}
-          />
-        </Card>
-      )}
+      {/* Explanation — the AI's intuition-first lesson. */}
+      {!showNote && (
+        <>
+          {query.isPending && (
+            <div className="space-y-3 py-2">
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-11/12" />
+              <Skeleton className="h-4 w-5/6" />
+              <div className="pt-3" />
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-4 w-full" />
+              <Spinner label="Composing your explanation…" />
+            </div>
+          )}
 
-      {query.isSuccess && <Markdown>{query.data.markdown}</Markdown>}
+          {query.isError && (
+            <Card>
+              <ErrorState
+                title="The explanation didn't arrive"
+                description="The tutor couldn't write this lesson just now. Give it another moment."
+                onRetry={onRetry}
+              />
+            </Card>
+          )}
+
+          {query.isSuccess && (
+            <Markdown resolveWiki={resolveWiki}>{query.data.markdown}</Markdown>
+          )}
+        </>
+      )}
     </article>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reading toggle — a subtle segmented control: Explanation vs Your note.
+// ---------------------------------------------------------------------------
+
+function ReadingToggle({
+  tone,
+  value,
+  onChange,
+}: {
+  tone: Tone;
+  value: ReadingMode;
+  onChange: (mode: ReadingMode) => void;
+}) {
+  const options: { id: ReadingMode; label: string }[] = [
+    { id: "explanation", label: "Explanation" },
+    { id: "note", label: "Your note" },
+  ];
+  const activeBg = tone === "review" ? "bg-review/10" : "bg-accent/10";
+  const activeText = tone === "review" ? "text-review" : "text-accent";
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Reading source"
+      className="mt-1 inline-flex shrink-0 rounded-full border border-border bg-surface p-0.5 text-xs font-medium"
+    >
+      {options.map((opt) => {
+        const active = value === opt.id;
+        return (
+          <button
+            key={opt.id}
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(opt.id)}
+            className={
+              "rounded-full px-3 py-1 transition-colors " +
+              (active
+                ? `${activeBg} ${activeText}`
+                : "text-muted hover:text-ink")
+            }
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

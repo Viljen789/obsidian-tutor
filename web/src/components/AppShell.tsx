@@ -4,13 +4,17 @@
  * centred reading-width column. The shell is intentionally quiet — one hairline
  * border under the header, no shadow — so the content carries the page.
  */
+import { Suspense } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import {
   BookOpen,
+  ClipboardCheck,
   GraduationCap,
   LayoutDashboard,
+  Loader2,
   LogOut,
   RotateCcw,
+  Share2,
   TrendingUp,
 } from "lucide-react";
 import { clsx } from "clsx";
@@ -20,6 +24,8 @@ const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/learn", label: "Learn", icon: GraduationCap, end: false },
   { to: "/review", label: "Review", icon: RotateCcw, end: false },
+  { to: "/exam", label: "Exam", icon: ClipboardCheck, end: false },
+  { to: "/graph", label: "Graph", icon: Share2, end: false },
   { to: "/progress", label: "Progress", icon: TrendingUp, end: false },
 ];
 
@@ -71,7 +77,15 @@ export function AppShell() {
       </header>
 
       <main className="mx-auto w-full max-w-3xl flex-1 px-5 py-8 sm:py-10">
-        <Outlet />
+        <Suspense
+          fallback={
+            <div className="grid place-items-center py-20 text-muted">
+              <Loader2 size={18} className="animate-spin" />
+            </div>
+          }
+        >
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );

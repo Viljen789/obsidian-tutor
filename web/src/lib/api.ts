@@ -27,4 +27,5 @@ export const api = {
   requestHint: callable("requestHint"),
   nextItem: callable("nextItem"),
   deleteSubject: callable("deleteSubject"),
+  generateExam: callable("generateExam"),
 };

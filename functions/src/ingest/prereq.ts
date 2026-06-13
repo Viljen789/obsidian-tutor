@@ -75,6 +75,107 @@ export function inferPrerequisites(concepts: Concept[]): Concept[] {
   }));
 }
 
+// --- MOC-aware ordering ---------------------------------------------------
+
+/**
+ * True for an Obsidian "Map of Content" note: its title or filename contains
+ * "MOC" as a standalone token (case-insensitive), e.g. "Databases MOC",
+ * "MOC - Databases", "Databases.MOC". Substrings like "mocha" do NOT match.
+ */
+function isMocConcept(c: Concept): boolean {
+  const fileBase = c.sourcePath
+    .replace(/\\/g, "/")
+    .split("/")
+    .pop()
+    ?.replace(/\.md$/i, "");
+  return [c.title, fileBase].some(
+    (s) => typeof s === "string" && /(^|[^\p{L}])moc([^\p{L}]|$)/iu.test(s),
+  );
+}
+
+/**
+ * MOC-derived ordering edges. A MOC note lists a subject's concepts as an ordered
+ * set of `[[wikilinks]]` — a hand-authored learning order. We read that order off
+ * the MOC concept's already-resolved, order-preserving `links` and emit, for each
+ * ordered pair (earlier, later) that shares the MOC's subject, a directed
+ * "earlier is a prerequisite of later" edge.
+ *
+ * - Earlier-listed -> prerequisite-of every later-listed concept (full ordering,
+ *   not just adjacent neighbours, so the chain is transitively consistent).
+ * - The MOC note itself is excluded as an endpoint (it's an index, not a concept
+ *   in the curriculum).
+ * - Only same-subject targets count (a Databases MOC orders Databases concepts).
+ *
+ * @returns map of dependentId -> set of prerequisiteIds implied by MOCs.
+ */
+function mocOrderingEdges(concepts: Concept[]): Map<string, Set<string>> {
+  const byId = new Map(concepts.map((c) => [c.id, c]));
+  const out = new Map<string, Set<string>>();
+  const add = (dependent: string, prereq: string) => {
+    if (dependent === prereq) return;
+    (out.get(dependent) ?? out.set(dependent, new Set()).get(dependent)!).add(prereq);
+  };
+
+  for (const moc of concepts) {
+    if (!isMocConcept(moc)) continue;
+    // Resolve the MOC's links to real, non-MOC concepts in the MOC's subject,
+    // preserving the authored order.
+    const ordered = moc.links
+      .map((id) => byId.get(id))
+      .filter(
+        (t): t is Concept =>
+          !!t && t.id !== moc.id && !isMocConcept(t) && t.subject === moc.subject,
+      );
+    for (let i = 0; i < ordered.length; i++) {
+      for (let j = i + 1; j < ordered.length; j++) {
+        // ordered[i] is listed before ordered[j] => prerequisite of it.
+        add(ordered[j]!.id, ordered[i]!.id);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Prerequisite inference that layers hand-authored MOC ("Map of Content") order
+ * on top of the structural heuristic.
+ *
+ * Composition (MOC takes precedence):
+ *  1. start from `inferPrerequisites` (the structural heuristic);
+ *  2. for every pair (x, y) ordered by some MOC, force the edge to match the MOC
+ *     (earlier -> prerequisite-of later), deleting any heuristic edge that ran the
+ *     other way for that pair. Pairs no MOC mentions keep their heuristic edge.
+ *
+ * Pure & deterministic. Backward-compatible: a vault with no MOC notes produces
+ * exactly the same result as `inferPrerequisites` (no MOC edges to apply).
+ *
+ * `inferPrerequisites`'s signature is unchanged; callers wanting MOC awareness opt
+ * in by calling this instead. The orchestrator (`ingestVault` in ./index.ts) wires
+ * it via `refinePrerequisitesWithLlm`, which seeds from this function.
+ */
+export function inferPrerequisitesWithMocs(concepts: Concept[]): Concept[] {
+  const base = inferPrerequisites(concepts);
+  const mocEdges = mocOrderingEdges(concepts);
+  if (mocEdges.size === 0) return base; // no MOCs => identical to the heuristic.
+
+  // Seed mutable prereq sets from the heuristic, then apply MOC overrides.
+  const prereqsOf = new Map<string, Set<string>>(
+    base.map((c) => [c.id, new Set(c.prerequisites)]),
+  );
+  for (const [dependent, prereqs] of mocEdges) {
+    for (const prereq of prereqs) {
+      // MOC wins: ensure earlier->later, and remove any opposite heuristic edge.
+      prereqsOf.get(prereq)?.delete(dependent);
+      prereqsOf.get(dependent)?.add(prereq);
+    }
+  }
+
+  return base.map((c) => ({
+    ...c,
+    prerequisites: [...(prereqsOf.get(c.id) ?? [])].sort(),
+  }));
+}
+
 // --- LLM refinement (callable-only) --------------------------------------
 
 const PrereqAnswer = z.object({
@@ -104,10 +205,18 @@ const BATCH_SIZE = 20;
 export async function refinePrerequisitesWithLlm(
   concepts: Concept[],
 ): Promise<Concept[]> {
-  const base = inferPrerequisites(concepts);
+  // Seed from the MOC-aware heuristic so hand-authored Map-of-Content order is
+  // honoured even before the LLM weighs in (and survives if the LLM declines a
+  // pair). With no MOC notes this is identical to `inferPrerequisites`.
+  const base = inferPrerequisitesWithMocs(concepts);
   const byId = new Map(base.map((c) => [c.id, c]));
   const pairs = linkedPairs(base).slice(0, MAX_PAIRS);
   if (pairs.length === 0) return base;
+
+  // Pairs a MOC already orders are authoritative: the LLM must not rewrite them.
+  const mocEdges = mocOrderingEdges(concepts);
+  const mocOrdersPair = (x: string, y: string): boolean =>
+    !!mocEdges.get(x)?.has(y) || !!mocEdges.get(y)?.has(x);
 
   // Mutable prerequisite sets seeded from the heuristic.
   const prereqsOf = new Map<string, Set<string>>(
@@ -144,6 +253,8 @@ export async function refinePrerequisitesWithLlm(
       const pair = batch[ans.pairIndex];
       if (!pair) continue;
       const [a, b] = pair;
+      // MOC order is hand-authored and wins over the model for this pair.
+      if (mocOrdersPair(a.id, b.id)) continue;
       // Rewrite just this pair's edge based on the model's call.
       prereqsOf.get(b.id)?.delete(a.id);
       prereqsOf.get(a.id)?.delete(b.id);

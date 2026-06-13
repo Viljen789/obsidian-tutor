@@ -83,6 +83,61 @@ body {
   border-inline-start-color: rgb(var(--border));
 }
 
+/* --- Wikilinks ----------------------------------------------------------- */
+/* Resolved links read like the ambient accent links; unresolved targets stay
+   quiet (a faint dotted underline) so a missing note is legible, not broken. */
+.prose-reading :where(a.wikilink) {
+  cursor: pointer;
+}
+.prose-reading .wikilink-dead {
+  @apply font-sans font-medium text-muted;
+  border-bottom: 1px dotted rgb(var(--muted) / 0.45);
+}
+
+/* --- LaTeX (KaTeX) ------------------------------------------------------- */
+/* KaTeX ships its own serif metrics; keep its colour in the ink palette and let
+   display math breathe + scroll horizontally on narrow screens rather than
+   overflow the column. */
+.prose-reading :where(.katex) {
+  color: rgb(var(--ink));
+  font-size: 1.04em;
+}
+.prose-reading :where(.katex-display) {
+  @apply my-5 overflow-x-auto overflow-y-hidden py-1;
+}
+
+/* --- Syntax highlighting (highlight.js) ---------------------------------- */
+/* The github.css theme paints token colours; we override the block chrome so it
+   matches `.prose-reading pre` (soft paper card) instead of highlight.js's own
+   white/grey background, and adapt the surface for dark mode. */
+.prose-reading :where(pre code.hljs) {
+  @apply bg-transparent p-0;
+  color: inherit;
+}
+.prose-reading :where(pre) code {
+  @apply bg-transparent px-0 py-0;
+}
+.dark .prose-reading :where(.hljs) {
+  color: rgb(var(--ink));
+}
+/* In dark mode the light github theme's near-black token colours wash out, so
+   lift the most common ones toward the dark palette. */
+.dark .prose-reading :where(.hljs-comment, .hljs-quote) {
+  color: rgb(var(--muted));
+}
+.dark .prose-reading :where(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-section, .hljs-link) {
+  color: #ff7b72;
+}
+.dark .prose-reading :where(.hljs-string, .hljs-title, .hljs-name, .hljs-type, .hljs-attribute, .hljs-symbol, .hljs-bullet, .hljs-addition, .hljs-variable, .hljs-template-tag, .hljs-template-variable) {
+  color: #a5d6ff;
+}
+.dark .prose-reading :where(.hljs-number, .hljs-built_in, .hljs-builtin-name, .hljs-meta) {
+  color: #79c0ff;
+}
+.dark .prose-reading :where(.hljs-function .hljs-title, .hljs-title.function_) {
+  color: #d2a8ff;
+}
+
 /* Micro-interactions — kept subtle and brief, never bouncy. */
 @keyframes fade-rise {
   from {

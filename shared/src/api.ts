@@ -25,6 +25,7 @@ export const CALLABLE = {
   requestHint: "requestHint",
   nextItem: "nextItem",
   deleteSubject: "deleteSubject",
+  generateExam: "generateExam",
 } as const;
 
 export type CallableName = (typeof CALLABLE)[keyof typeof CALLABLE];
@@ -76,6 +77,20 @@ export interface GenerateQuestionsRequest {
 export interface GenerateQuestionsResponse {
   conceptId: string;
   questions: Question[];
+  model: string;
+}
+
+// --- generateExam ---------------------------------------------------------
+// A practice exam: a spread of questions across a subject's concepts, mixing
+// recall / application / why. Answers are graded via submitAnswer, so an exam
+// doubles as spaced review.
+export interface GenerateExamRequest {
+  subject: string;
+  count?: number; // default ~10
+}
+export interface GenerateExamResponse {
+  subject: string;
+  questions: Question[]; // each carries its conceptId for grading
   model: string;
 }
 
@@ -140,6 +155,7 @@ export interface CallableContract {
   requestHint: { request: RequestHintRequest; response: RequestHintResponse };
   nextItem: { request: NextItemRequest; response: NextItemResponse };
   deleteSubject: { request: DeleteSubjectRequest; response: DeleteSubjectResponse };
+  generateExam: { request: GenerateExamRequest; response: GenerateExamResponse };
 }
 
 // Re-export the domain types most consumers need alongside the API types.

@@ -9,6 +9,7 @@
  *   /review, /review/:id    Review mode (review / amber)
  *   /progress               Per-concept mastery + spaced-repetition state
  */
+import { lazy } from "react";
 import { Route, Routes } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -20,6 +21,11 @@ import { Learn } from "@/views/Learn";
 import { Review } from "@/views/Review";
 import { Progress } from "@/views/Progress";
 import { Button } from "@/components/ui";
+
+// Heavy / secondary routes — lazy so the force-graph + exam code stays out of the
+// initial bundle (loaded on first visit). The Suspense boundary lives in AppShell.
+const Graph = lazy(() => import("@/views/Graph").then((m) => ({ default: m.Graph })));
+const Exam = lazy(() => import("@/views/Exam").then((m) => ({ default: m.Exam })));
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -46,6 +52,9 @@ export default function App() {
         <Route path="review" element={<Review />} />
         <Route path="review/:conceptId" element={<Review />} />
         <Route path="progress" element={<Progress />} />
+        <Route path="graph" element={<Graph />} />
+        <Route path="exam" element={<Exam />} />
+        <Route path="exam/:subject" element={<Exam />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

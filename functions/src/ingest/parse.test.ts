@@ -61,4 +61,70 @@ describe("parseNote (pure)", () => {
     const note = parseNote("S/T.md", raw);
     expect(note.tags).toEqual(["alpha", "beta", "gamma"]);
   });
+
+  describe("inline Obsidian #tags", () => {
+    it("extracts a real inline tag from the body", () => {
+      const raw = "# Heading\n\nThis note is about #acid guarantees.";
+      const note = parseNote("S/T.md", raw);
+      expect(note.tags).toContain("acid");
+    });
+
+    it("treats a markdown heading (# then space) as NOT a tag", () => {
+      const raw = "# Transactions\n\nNo inline tags here, just prose.";
+      const note = parseNote("S/T.md", raw);
+      // The heading word must not leak in as a tag.
+      expect(note.tags).toEqual([]);
+    });
+
+    it("ignores a #tag that lives inside a fenced code block", () => {
+      const raw = [
+        "Intro with a real #exam tag.",
+        "",
+        "```bash",
+        "# this is a shell comment, not a tag",
+        "grep '#notatag' file",
+        "```",
+        "",
+        "Outro.",
+      ].join("\n");
+      const note = parseNote("S/T.md", raw);
+      expect(note.tags).toContain("exam");
+      expect(note.tags).not.toContain("notatag");
+      // The shell comment "# this is..." has a space after # so it isn't a tag
+      // anyway, but the fenced region must be stripped regardless.
+      expect(note.tags).not.toContain("this");
+    });
+
+    it("ignores a #tag inside an inline code span", () => {
+      const raw = "Use the literal `#define` macro, and tag it #c-lang.";
+      const note = parseNote("S/T.md", raw);
+      expect(note.tags).toContain("c-lang");
+      expect(note.tags).not.toContain("define");
+    });
+
+    it("supports nested tags like #a/b and dedupes against frontmatter", () => {
+      const raw = [
+        "---",
+        "tags: [acid]",
+        "---",
+        "Nested #two-phase-locking/strict and a dup #acid reference.",
+      ].join("\n");
+      const note = parseNote("S/T.md", raw);
+      expect(note.tags).toContain("two-phase-locking/strict");
+      // "acid" came from frontmatter; the inline #acid must not duplicate it.
+      expect(note.tags.filter((t) => t.toLowerCase() === "acid")).toHaveLength(1);
+    });
+
+    it("does not treat a bare number (#123) or mid-word # as a tag", () => {
+      const raw = "See issue #123 and the url https://example.com/page#frag.";
+      const note = parseNote("S/T.md", raw);
+      expect(note.tags).toEqual([]);
+    });
+
+    it("merges frontmatter tags with inline tags, frontmatter first", () => {
+      const raw = "---\ntags: [hardware]\n---\nBody mentions #cache and #latency.";
+      const note = parseNote("S/T.md", raw);
+      expect(note.tags).toEqual(["hardware", "cache", "latency"]);
+    });
+  });
 });

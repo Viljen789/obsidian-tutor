@@ -23,3 +23,6 @@ export { nextItem } from "./engine/index";
 
 // Vault management
 export { deleteSubject } from "./flows/deleteSubject";
+
+// Practice exam
+export { generateExam } from "./flows/generateExam";
