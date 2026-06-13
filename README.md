@@ -21,28 +21,39 @@ Prereqs: Node ≥ 20, Java (for the emulators), the Firebase CLI.
 ```bash
 npm install
 
-# 1) Add your Anthropic key for the AI functions (local only, gitignored):
+# 1) Add your AI provider key (local only, gitignored). Default is Gemini (free):
+#    grab a key at https://aistudio.google.com/apikey
 cp functions/.secret.local.example functions/.secret.local
-#   then edit functions/.secret.local and paste your key
+#   then edit functions/.secret.local and paste your GEMINI_API_KEY
 
-# 2) Build the functions once (the emulator runs the bundled output):
-npm -w functions run build
-
-# 3) Start the Firebase Emulator Suite (auth, firestore, functions, storage, hosting):
-firebase emulators:start --project demo-tutor
-
-# 4) In another terminal, start the web app + functions rebuild-on-save:
-npm run dev
-#   → open http://localhost:5173
+# 2) Start everything — emulators (auth/firestore/functions/storage) + the web app:
+npm start
+#   → open http://localhost:5173, sign in, and import a vault.
+#     `npm run seed` packs the bundled sample-vault.zip if you need one to import.
 ```
 
-The app defaults to the emulators with a demo project, so it runs fully offline.
+The app defaults to the emulators with a demo project, so it runs fully offline —
+no Firebase account or credit card needed. Your progress persists between runs
+(the emulator exports to `./emulator-data` on exit).
+
+## AI provider
+
+The model provider is a one-env-var switch (`LLM_PROVIDER`), wired through
+[`functions/src/lib/llm.ts`](functions/src/lib/llm.ts) — no code changes to swap:
+
+- `gemini` **(default)** — Google AI Studio, free-tier Flash. Set `GEMINI_API_KEY`.
+- `gemini-vertex` — Vertex AI; **no key** (uses the function's service account) and
+  covered by the **$300 Google Cloud trial credit**. Enable the Vertex AI API and
+  grant the functions service account the *Vertex AI User* role.
+- `anthropic` — Claude. Set `ANTHROPIC_API_KEY`.
+
+Model ids per provider live in [`functions/src/config.ts`](functions/src/config.ts) (`MODEL_SETS`).
 
 ## Going live (Firebase)
 
 1. Create a Firebase project; enable Authentication (Google), Firestore, Storage, Functions.
 2. `firebase use --add <your-project-id>` (replaces the `demo-tutor` default).
-3. Set the production secret: `firebase functions:secrets:set ANTHROPIC_API_KEY`.
+3. Set the production secret: `firebase functions:secrets:set GEMINI_API_KEY` (or your provider's key).
 4. Put your web app config in `web/.env` (`VITE_USE_EMULATORS=false` + the `VITE_FIREBASE_*` vars).
 5. `npm run build && firebase deploy`.
 

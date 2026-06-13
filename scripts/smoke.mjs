@@ -142,8 +142,8 @@ async function main() {
     ok(`nextItem after grading → ${n2.action}: ${n2.conceptId ?? "—"}`);
     console.log("\n  Full teach→grade→update→next loop verified live. 🎉");
   } catch (e) {
-    skip(`AI steps skipped — explain/grade need a working ANTHROPIC_API_KEY for the functions emulator.`);
-    skip(`  (${e.message})  Set it in functions/.secret.local and restart the emulator to verify these.`);
+    skip(`AI steps skipped — explain/grade need the active provider's key in the functions emulator.`);
+    skip(`  (${e.message})  Add GEMINI_API_KEY (or your chosen provider's key) to functions/.secret.local and restart.`);
   }
 
   done();

@@ -15,7 +15,7 @@ import type {
   IngestVaultResponse,
 } from "@tutor/shared";
 import { authedCallable, HttpsError } from "../lib/callable";
-import { ANTHROPIC_API_KEY } from "../lib/anthropic";
+import { llmSecrets } from "../lib/llm";
 import { upsertConcepts } from "../lib/firebase";
 import { parseNote } from "./parse";
 import { assembleGraphWithWarnings } from "./graph";
@@ -49,7 +49,7 @@ function isVaultMarkdown(entryName: string): boolean {
 
 // --- Callable: ingestVault ------------------------------------------------
 export const ingestVault = authedCallable<IngestVaultRequest, IngestVaultResponse>(
-  { secrets: [ANTHROPIC_API_KEY] },
+  { secrets: llmSecrets },
   async ({ storagePath }, { uid }): Promise<IngestVaultResponse> => {
     if (!storagePath || typeof storagePath !== "string") {
       throw new HttpsError("invalid-argument", "storagePath is required.");

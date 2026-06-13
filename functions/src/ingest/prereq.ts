@@ -16,8 +16,8 @@
  */
 import type { Concept } from "@tutor/shared";
 import { z } from "zod";
-import { MODELS, TOKEN_CAPS } from "../config";
-import { completeStructured } from "../lib/anthropic";
+import { TOKEN_CAPS } from "../config";
+import { MODELS, completeStructured } from "../lib/llm";
 
 /** Depth = number of path segments (folder nesting). Shallower => more foundational. */
 function pathDepth(sourcePath: string): number {

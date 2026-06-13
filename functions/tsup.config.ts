@@ -14,7 +14,7 @@ export default defineConfig({
   splitting: false,
   sourcemap: true,
   clean: true,
-  external: ["firebase-admin", "firebase-functions", "@anthropic-ai/sdk"],
+  external: ["firebase-admin", "firebase-functions", "@anthropic-ai/sdk", "@google/genai"],
   // The workspace package has no published build — it MUST be inlined, never
   // required at runtime (its TS source would fail Node's ESM resolver).
   noExternal: ["@tutor/shared"],

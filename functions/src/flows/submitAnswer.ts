@@ -12,13 +12,13 @@
  */
 import type { SubmitAnswerRequest, SubmitAnswerResponse } from "@tutor/shared";
 import { authedCallable, HttpsError } from "../lib/callable";
-import { ANTHROPIC_API_KEY } from "../lib/anthropic";
+import { llmSecrets } from "../lib/llm";
 import { getConcept, getMastery, setMastery } from "../lib/firebase";
 import { gradeAnswer } from "../ai/index";
 import { applyGrade, newMastery } from "../engine/index";
 
 export const submitAnswer = authedCallable<SubmitAnswerRequest, SubmitAnswerResponse>(
-  { secrets: [ANTHROPIC_API_KEY] },
+  { secrets: llmSecrets },
   async (data, { uid }): Promise<SubmitAnswerResponse> => {
     const concept = await getConcept(uid, data.conceptId);
     if (!concept) {

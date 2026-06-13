@@ -1,14 +1,26 @@
 /**
- * Central AI + cost configuration. To swap models, edit ONLY this file.
+ * Central AI + cost configuration. To swap models, edit ONLY this file; to swap
+ * PROVIDERS, set the LLM_PROVIDER env var (see lib/llm.ts).
  *
- * Model ids (current Claude family):
- *   - teach/grade: a strong Sonnet — intuition-first explanations, fair grading.
- *   - classify:    a cheap Haiku   — prerequisite inference, light classification.
+ * Per provider:
+ *   - teach/grade: the stronger model — intuition-first explanations, fair grading.
+ *   - classify:    the cheap/fast model — prerequisite inference, light classification.
+ *
+ * Gemini defaults to free-tier Flash. Bump `teach`/`grade` to "gemini-2.5-pro"
+ * (or "gemini-3.5-flash") for higher quality — free-tier on AI Studio, or covered
+ * by the $300 credit on Vertex.
  */
-export const MODELS = {
-  teach: "claude-sonnet-4-6",
-  grade: "claude-sonnet-4-6",
-  classify: "claude-haiku-4-5",
+export const MODEL_SETS = {
+  gemini: {
+    teach: "gemini-2.5-flash",
+    grade: "gemini-2.5-flash",
+    classify: "gemini-2.5-flash-lite",
+  },
+  anthropic: {
+    teach: "claude-sonnet-4-6",
+    grade: "claude-sonnet-4-6",
+    classify: "claude-haiku-4-5",
+  },
 } as const;
 
 /** Hard output-token caps per call — a cost/latency guardrail (see §7). */

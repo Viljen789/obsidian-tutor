@@ -1,7 +1,7 @@
 /**
  * AI-in-the-loop callables (Phase 2).
  *
- * All four call Claude server-side via the lib/anthropic helpers (never the SDK
+ * All four call the active LLM provider via the lib/llm helpers (never an SDK
  * directly). `gradeAnswer` is a plain helper, not a callable, because the
  * `submitAnswer` flow composes it with the engine's mastery update.
  *
@@ -22,9 +22,9 @@ import type {
   RequestHintRequest,
   RequestHintResponse,
 } from "@tutor/shared";
-import { DEFAULTS, MODELS, TOKEN_CAPS } from "../config";
+import { DEFAULTS, TOKEN_CAPS } from "../config";
 import { authedCallable, HttpsError } from "../lib/callable";
-import { ANTHROPIC_API_KEY, completeStructured, completeText } from "../lib/anthropic";
+import { MODELS, completeStructured, completeText, llmSecrets } from "../lib/llm";
 import {
   getConcept,
   getExplanationCache,
@@ -52,7 +52,7 @@ function clamp(n: number, min: number, max: number): number {
 // Intuition-first explanation. Checks explanationCache first (cost guardrail);
 // only calls the model on a miss, then caches the result.
 export const explainConcept = authedCallable<ExplainConceptRequest, ExplainConceptResponse>(
-  { secrets: [ANTHROPIC_API_KEY] },
+  { secrets: llmSecrets },
   async (data, { uid }): Promise<ExplainConceptResponse> => {
     const depth = data.depth ?? "standard";
 
@@ -109,7 +109,7 @@ export const explainConcept = authedCallable<ExplainConceptRequest, ExplainConce
 export const generateQuestions = authedCallable<
   GenerateQuestionsRequest,
   GenerateQuestionsResponse
->({ secrets: [ANTHROPIC_API_KEY] }, async (data, { uid }): Promise<GenerateQuestionsResponse> => {
+>({ secrets: llmSecrets }, async (data, { uid }): Promise<GenerateQuestionsResponse> => {
   const count = data.count ?? DEFAULTS.questionCount;
 
   const concept = await getConcept(uid, data.conceptId);
@@ -147,7 +147,7 @@ export const generateQuestions = authedCallable<
 // --- requestHint ----------------------------------------------------------
 // A nudge toward the answer — explicitly NOT the full answer.
 export const requestHint = authedCallable<RequestHintRequest, RequestHintResponse>(
-  { secrets: [ANTHROPIC_API_KEY] },
+  { secrets: llmSecrets },
   async (data, { uid }): Promise<RequestHintResponse> => {
     const concept = await getConcept(uid, data.conceptId);
     if (!concept) {

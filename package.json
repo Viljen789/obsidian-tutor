@@ -9,10 +9,11 @@
     "web"
   ],
   "scripts": {
+    "start": "npm -w functions run build && concurrently -k -n emulators,web,functions -c yellow,cyan,magenta \"npm run emulators\" \"npm -w web run dev\" \"npm -w functions run build:watch\"",
     "dev": "concurrently -n web,functions -c cyan,magenta \"npm:dev:web\" \"npm:dev:functions\"",
     "dev:web": "npm -w web run dev",
     "dev:functions": "npm -w functions run build:watch",
-    "emulators": "firebase emulators:start --import ./emulator-data --export-on-exit ./emulator-data",
+    "emulators": "firebase emulators:start --project demo-tutor --export-on-exit=./emulator-data $([ -d ./emulator-data ] && echo --import=./emulator-data)",
     "build": "npm -w functions run build && npm -w web run build",
     "typecheck": "npm -w shared run typecheck && npm -w functions run typecheck && npm -w web run typecheck",
     "test": "npm -w functions run test",
