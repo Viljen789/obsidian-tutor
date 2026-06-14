@@ -38,17 +38,31 @@ export const submitAnswer = authedCallable<SubmitAnswerRequest, SubmitAnswerResp
     const current = (await getMastery(uid, data.conceptId)) ?? newMastery(data.conceptId);
     const settings = await getSettings(uid);
 
+    // No-peek integrity: if the learner revealed the material before answering,
+    // cap the grade — a peeked recall is a weaker memory. The cap flows into FSRS
+    // as a lower quality → a shorter interval, which is the correct outcome.
+    const effective = data.peeked
+      ? {
+          ...grade,
+          quality: Math.min(grade.quality, 3),
+          score: grade.score * 0.6,
+          feedback:
+            grade.feedback +
+            " (Score capped — you revealed the material; answer from memory next time for full credit.)",
+        }
+      : grade;
+
     // Advance SM-2 + mastery deterministically (time injected, engine stays pure).
     const mastery = applyGrade(
       current,
-      grade.quality,
-      grade.score,
+      effective.quality,
+      effective.score,
       Date.now(),
       settings.masteredThreshold,
     );
 
     await setMastery(uid, mastery);
 
-    return { grade, mastery };
+    return { grade: effective, mastery };
   },
 );

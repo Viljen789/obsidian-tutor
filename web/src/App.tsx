@@ -28,6 +28,8 @@ const Review = lazy(() => import("@/views/Review").then((m) => ({ default: m.Rev
 const Flashcards = lazy(() => import("@/views/Flashcards").then((m) => ({ default: m.Flashcards })));
 const Drill = lazy(() => import("@/views/Drill").then((m) => ({ default: m.Drill })));
 const Mock = lazy(() => import("@/views/Mock").then((m) => ({ default: m.Mock })));
+const CheatSheet = lazy(() => import("@/views/CheatSheet").then((m) => ({ default: m.CheatSheet })));
+const Synthesis = lazy(() => import("@/views/Synthesis").then((m) => ({ default: m.Synthesis })));
 const Settings = lazy(() => import("@/views/Settings").then((m) => ({ default: m.Settings })));
 const Graph = lazy(() => import("@/views/Graph").then((m) => ({ default: m.Graph })));
 const Exam = lazy(() => import("@/views/Exam").then((m) => ({ default: m.Exam })));
@@ -66,6 +68,10 @@ export default function App() {
           <Route path="exam" element={<Exam />} />
           <Route path="exam/:subject" element={<Exam />} />
           <Route path="mock" element={<Mock />} />
+          <Route path="cheatsheet" element={<CheatSheet />} />
+          <Route path="cheatsheet/:subject" element={<CheatSheet />} />
+          <Route path="synthesis" element={<Synthesis />} />
+          <Route path="synthesis/:subject" element={<Synthesis />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Route>

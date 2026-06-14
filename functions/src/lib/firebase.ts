@@ -13,7 +13,9 @@ import {
   paths,
   explanationCacheKey,
   DEFAULT_USER_SETTINGS,
+  type CheatSheetEntry,
   type Concept,
+  type DiagramEntry,
   type ExplanationCacheEntry,
   type ExplanationDepth,
   type FlashcardDeck,
@@ -170,6 +172,34 @@ export async function getFlashcardDeck(
 
 export async function setFlashcardDeck(uid: string, deck: FlashcardDeck): Promise<void> {
   await db.doc(paths.flashcardDoc(uid, deck.conceptId)).set(deck);
+}
+
+// --- Cheat sheets ---------------------------------------------------------
+// One cached one-pager per subject, keyed by an encoded subject string.
+
+export async function getCheatSheet(uid: string, key: string): Promise<CheatSheetEntry | null> {
+  const snap = await db.doc(paths.cheatSheetDoc(uid, key)).get();
+  return snap.exists ? (snap.data() as CheatSheetEntry) : null;
+}
+
+export async function setCheatSheet(
+  uid: string,
+  key: string,
+  entry: CheatSheetEntry,
+): Promise<void> {
+  await db.doc(paths.cheatSheetDoc(uid, key)).set(entry);
+}
+
+// --- Diagrams -------------------------------------------------------------
+// One cached Mermaid diagram per concept (like explanationCache).
+
+export async function getDiagram(uid: string, conceptId: string): Promise<DiagramEntry | null> {
+  const snap = await db.doc(paths.diagramDoc(uid, conceptId)).get();
+  return snap.exists ? (snap.data() as DiagramEntry) : null;
+}
+
+export async function setDiagram(uid: string, entry: DiagramEntry): Promise<void> {
+  await db.doc(paths.diagramDoc(uid, entry.conceptId)).set(entry);
 }
 
 // --- Settings -------------------------------------------------------------

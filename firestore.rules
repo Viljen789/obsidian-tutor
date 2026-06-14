@@ -58,6 +58,18 @@ service cloud.firestore {
       match /prefs/{docId} {
         allow read, write: if isOwner(uid);
       }
+
+      // Cheat sheets: client reads, only Functions write (generated server-side).
+      match /cheatsheets/{key} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      // Mermaid diagrams: client reads, only Functions write.
+      match /diagrams/{conceptId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
     }
 
     // Read-only shared decks: anyone with the link may read; only Functions

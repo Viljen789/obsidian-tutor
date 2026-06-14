@@ -16,6 +16,7 @@ import {
   ArrowRight,
   CheckCircle2,
   FileArchive,
+  FileText,
   Github,
   Library,
   Lock,
@@ -226,6 +227,17 @@ export function VaultImport() {
           </div>
 
           <GitHubSyncCard />
+
+          {/* Or: pull concepts out of a lecture PDF / slide deck */}
+          <div className="flex items-center gap-3 pt-1">
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
+              or
+            </span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
+          <PdfImportCard />
         </>
       )}
     </div>
@@ -396,6 +408,183 @@ function GitHubSyncCard() {
         {busy && (
           <span className="text-sm text-muted">
             Fetching the repo and building the concept graph.
+          </span>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Lecture PDF import — upload a PDF / slide deck; Gemini (multimodal) reads it
+// and extracts a concept outline, which flows through the SAME idempotent
+// ingest pipeline (concepts upserted by id; mastery preserved). Self-contained:
+// own file + phase + result state, its own ResultPanel on success.
+// ---------------------------------------------------------------------------
+
+/** Gemini inline file limits + the 50 MB Storage rule — keep PDFs reasonable. */
+const PDF_MAX_BYTES = 25 * 1024 * 1024; // 25 MB
+
+function PdfImportCard() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const [file, setFile] = useState<File | null>(null);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [result, setResult] = useState<IngestVaultResponse | null>(null);
+
+  const busy = phase === "uploading" || phase === "ingesting";
+  const tooBig = file != null && file.size > PDF_MAX_BYTES;
+
+  const pickFile = (f: File | null | undefined) => {
+    if (!f) return;
+    if (!f.name.toLowerCase().endsWith(".pdf")) {
+      setErrorMsg("Please choose a .pdf lecture or slide deck.");
+      setPhase("error");
+      return;
+    }
+    setFile(f);
+    setErrorMsg(null);
+    setPhase("idle");
+    setResult(null);
+  };
+
+  const onImport = async () => {
+    if (!file || !user || tooBig) return;
+    setPhase("uploading");
+    setErrorMsg(null);
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `${paths.user(user.uid)}/uploads/${Date.now()}_${safeName}.pdf`;
+      await uploadBytes(storageRef(storage, path), file);
+
+      setPhase("ingesting");
+      const res = await api.ingestPdf({ storagePath: path });
+      setResult(res);
+      setPhase("done");
+      // New concepts/mastery now exist server-side — refresh the caches.
+      void qc.invalidateQueries({ queryKey: qk.concepts(user.uid) });
+      void qc.invalidateQueries({ queryKey: qk.mastery(user.uid) });
+    } catch (e) {
+      setErrorMsg(
+        e instanceof Error && e.message
+          ? friendlyError(e.message)
+          : "The import didn't complete. Please try again.",
+      );
+      setPhase("error");
+    }
+  };
+
+  const reset = () => {
+    setFile(null);
+    setResult(null);
+    setErrorMsg(null);
+    setPhase("idle");
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  if (phase === "done" && result) {
+    return (
+      <ResultPanel result={result} onAgain={reset} onStart={() => navigate("/")} />
+    );
+  }
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-start gap-3">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent">
+          <FileText size={20} />
+        </div>
+        <div className="min-w-0">
+          <h2 className="font-serif text-xl text-ink">Import a lecture PDF</h2>
+          <p className="mt-1 text-sm leading-relaxed text-muted">
+            Import a lecture PDF or slide deck — we'll pull out the concepts and
+            teach them. They join your graph just like vault notes.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5">
+        {file ? (
+          <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-bg/50 p-3.5 text-left">
+            <FileText size={20} className="shrink-0 text-accent" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-ink">{file.name}</p>
+              <p className="text-xs text-muted">{fileSize(file.size)}</p>
+            </div>
+            {!busy && (
+              <button
+                onClick={reset}
+                className="rounded-lg p-1 text-muted transition-colors hover:bg-ink/[0.05] hover:text-ink"
+                title="Remove"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={busy}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-bg/50 px-4 py-5 text-sm font-medium text-ink transition-colors hover:border-accent hover:bg-accent/[0.03] disabled:opacity-50"
+          >
+            <Upload size={16} className="text-accent" /> Choose a PDF
+          </button>
+        )}
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          className="hidden"
+          onChange={(e) => pickFile(e.target.files?.[0])}
+        />
+
+        {tooBig ? (
+          <p className="mt-2 flex items-center gap-1.5 text-xs text-review">
+            <AlertTriangle size={13} className="shrink-0" />
+            That PDF is over {fileSize(PDF_MAX_BYTES)} — try a smaller or
+            split-up deck.
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-muted">
+            Up to {fileSize(PDF_MAX_BYTES)}. Text-based slides work best.
+          </p>
+        )}
+      </div>
+
+      {phase === "error" && errorMsg && (
+        <div className="mt-4">
+          <ErrorState
+            title="Import failed"
+            description={errorMsg}
+            onRetry={file && !tooBig ? () => void onImport() : undefined}
+          />
+        </div>
+      )}
+
+      <div className="mt-5 flex items-center gap-3">
+        <Button
+          icon={FileText}
+          disabled={!file || tooBig}
+          loading={busy}
+          onClick={() => void onImport()}
+        >
+          {phase === "uploading"
+            ? "Uploading…"
+            : phase === "ingesting"
+              ? "Reading the lecture…"
+              : "Import PDF"}
+        </Button>
+        {busy && (
+          <span className="text-sm text-muted">
+            {phase === "uploading"
+              ? "Sending your file securely."
+              : "Pulling out concepts — this can take a moment."}
           </span>
         )}
       </div>

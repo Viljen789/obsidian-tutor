@@ -70,3 +70,13 @@ export async function completeStructured<T>(
   }
   return res.parsed_output;
 }
+
+/**
+ * Multimodal structured completion. Gemini-only in this app; the Anthropic
+ * provider keeps the interface but is not wired for file input here.
+ */
+export async function completeStructuredWithFile<T>(
+  _args: CompleteArgs & { schema: ZodType<T>; file: { mimeType: string; base64: string } },
+): Promise<T> {
+  throw new Error("Multimodal file input is only supported on the Gemini provider.");
+}

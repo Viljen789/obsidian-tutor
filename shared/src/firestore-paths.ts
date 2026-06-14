@@ -46,6 +46,14 @@ export const paths = {
   // Read-only shared decks: top-level, public-readable, Functions-written.
   shares: () => `shares`,
   shareDoc: (shareId: string) => `shares/${shareId}`,
+
+  // Cheat sheets: one cached one-pager per subject. Functions-written, client-read.
+  cheatSheets: (uid: string) => `users/${uid}/cheatsheets`,
+  cheatSheetDoc: (uid: string, key: string) => `users/${uid}/cheatsheets/${key}`,
+
+  // LLM-generated Mermaid diagrams, one per concept. Functions-written, client-read.
+  diagrams: (uid: string) => `users/${uid}/diagrams`,
+  diagramDoc: (uid: string, conceptId: string) => `users/${uid}/diagrams/${conceptId}`,
 } as const;
 
 /** Key for an explanationCache document: `${conceptId}_${depth}`. */

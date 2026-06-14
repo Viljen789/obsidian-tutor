@@ -33,6 +33,11 @@ export const TOKEN_CAPS = {
   flashcards: 1400,
   chat: 800,
   mock: 1400,
+  critique: 1100,
+  cheatsheet: 2000,
+  pdf: 8000,
+  synthesis: 1400,
+  diagram: 700,
 } as const;
 
 export const DEFAULTS = {

@@ -35,4 +35,10 @@ export const api = {
   generateMock: callable("generateMock"),
   setPrerequisites: callable("setPrerequisites"),
   createShare: callable("createShare"),
+  critiqueExplanation: callable("critiqueExplanation"),
+  generateCheatSheet: callable("generateCheatSheet"),
+  ingestPdf: callable("ingestPdf"),
+  generateSynthesis: callable("generateSynthesis"),
+  gradeSynthesis: callable("gradeSynthesis"),
+  generateDiagram: callable("generateDiagram"),
 };

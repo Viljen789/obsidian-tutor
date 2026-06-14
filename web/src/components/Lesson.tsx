@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   Circle,
   Compass,
+  Eye,
   Lightbulb,
   RotateCcw,
   Sparkles,
@@ -57,6 +58,8 @@ import { Markdown } from "./Markdown";
 import { buildAssetResolver } from "../lib/assets";
 import { ReadAloud } from "./ReadAloud";
 import { Backlinks } from "./Backlinks";
+import { FeynmanPanel } from "./FeynmanPanel";
+import { DiagramPanel } from "./DiagramPanel";
 import { TutorChat } from "./TutorChat";
 
 // ---------------------------------------------------------------------------
@@ -174,6 +177,9 @@ export function Lesson({
 
   // --- Questions (loaded on demand once the learner is ready) --------------
   const [started, setStarted] = useState(false);
+  // No-peek: the reading column blurs during questions until revealed. Revealing
+  // is sticky and caps the score on every answer from then on.
+  const [revealed, setRevealed] = useState(false);
   const questions = useQuery({
     queryKey: ["questions", conceptId],
     enabled: started,
@@ -196,6 +202,8 @@ export function Lesson({
         note={conceptQuery.data?.bodyMarkdown}
         resolveWiki={resolveWiki}
         resolveAsset={resolveAsset}
+        blurred={started && !revealed}
+        onReveal={() => setRevealed(true)}
       />
 
       {/* Q&A only appears once an explanation exists — you read, then practise. */}
@@ -223,6 +231,7 @@ export function Lesson({
               title={title}
               tone={tone}
               query={questions}
+              peeked={revealed}
               onRetry={() => void questions.refetch()}
               onGraded={() => invalidateMastery(conceptId)}
             />
@@ -236,6 +245,16 @@ export function Lesson({
           <TutorChat conceptId={conceptId} tone={tone} />
         </div>
       )}
+
+      {/* Feynman — explain the concept back in your own words, get critiqued. */}
+      {explain.isSuccess && (
+        <div className="animate-fade">
+          <FeynmanPanel conceptId={conceptId} tone={tone} />
+        </div>
+      )}
+
+      {/* A diagram of the concept, generated on demand. */}
+      <DiagramPanel conceptId={conceptId} tone={tone} />
 
       {/* "Linked from" / "Unlocks" — the vault's connective tissue. */}
       <Backlinks conceptId={conceptId} tone={tone} />
@@ -258,6 +277,8 @@ function ExplanationBlock({
   note,
   resolveWiki,
   resolveAsset,
+  blurred,
+  onReveal,
 }: {
   tone: Tone;
   title: string;
@@ -269,6 +290,8 @@ function ExplanationBlock({
   note?: string;
   resolveWiki: (target: string) => string | null;
   resolveAsset: (name: string) => string | null;
+  blurred: boolean;
+  onReveal: () => void;
 }) {
   // The "Your note" tab is only meaningful when the concept has a raw body.
   const hasNote = !!note && note.trim().length > 0;
@@ -309,6 +332,10 @@ function ExplanationBlock({
         </div>
       </header>
 
+      {/* Reading content — blurred during the question phase (no-peek) until the
+          learner reveals it, which caps their score. */}
+      <div className="relative">
+      <div className={blurred ? "pointer-events-none select-none blur-[6px]" : ""}>
       {/* Your note — the learner's raw vault markdown, rendered as-is. Independent
           of the explanation request, so it's readable even if that failed. */}
       {showNote && (
@@ -348,6 +375,19 @@ function ExplanationBlock({
           )}
         </>
       )}
+      </div>
+      {blurred && (
+        <div className="absolute inset-x-0 top-0 flex justify-center pt-10">
+          <button
+            onClick={onReveal}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-ink shadow-sm transition-colors hover:bg-ink/[0.03]"
+          >
+            <Eye size={16} />
+            Reveal the material — caps your score
+          </button>
+        </div>
+      )}
+      </div>
     </article>
   );
 }
@@ -410,6 +450,7 @@ function QuestionFlow({
   title,
   tone,
   query,
+  peeked,
   onRetry,
   onGraded,
 }: {
@@ -417,6 +458,7 @@ function QuestionFlow({
   title: string;
   tone: Tone;
   query: ReturnType<typeof useQuery<{ questions: Question[] }>>;
+  peeked: boolean;
   onRetry: () => void;
   onGraded: () => void;
 }) {
@@ -500,6 +542,7 @@ function QuestionFlow({
         conceptId={conceptId}
         question={current}
         tone={tone}
+        peeked={peeked}
         isLast={index === questions.length - 1}
         onGraded={(quality) => {
           setQualities((prev) => ({ ...prev, [current.id]: quality }));
@@ -530,6 +573,7 @@ function QuestionCard({
   conceptId,
   question,
   tone,
+  peeked,
   isLast,
   onGraded,
   onNext,
@@ -537,6 +581,7 @@ function QuestionCard({
   conceptId: string;
   question: Question;
   tone: Tone;
+  peeked: boolean;
   isLast: boolean;
   onGraded: (quality: number) => void;
   onNext: () => void;
@@ -570,6 +615,7 @@ function QuestionCard({
         questionId: question.id,
         question: question.prompt,
         answer: answer.trim(),
+        peeked,
       }),
     onSuccess: (res) => {
       // Lift the graded SM-2 quality up for the session recap.

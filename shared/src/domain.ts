@@ -119,6 +119,22 @@ export interface Question {
   prompt: string;
 }
 
+/** A cross-concept synthesis question — integrates two or more concepts. */
+export interface SynthesisQuestion {
+  id: string;
+  type: QuestionType;
+  prompt: string;
+  conceptIds: string[]; // the concepts this question weaves together (>= 2)
+}
+
+/** Cached LLM-generated Mermaid diagram for a concept (Functions-written). */
+export interface DiagramEntry {
+  conceptId: string;
+  mermaid: string;
+  model: string;
+  createdAt: IsoTimestamp;
+}
+
 // ---------------------------------------------------------------------------
 // Sessions & user
 // ---------------------------------------------------------------------------
@@ -289,4 +305,12 @@ export interface ShareDoc {
   ownerName: string | null;
   createdAt: IsoTimestamp;
   concepts: SharedConcept[];
+}
+
+/** Cached one-page revision sheet for a subject (Functions-written). */
+export interface CheatSheetEntry {
+  subject: string;
+  markdown: string;
+  model: string;
+  createdAt: IsoTimestamp;
 }

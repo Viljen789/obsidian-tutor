@@ -17,6 +17,7 @@ import type {
   Mastery,
   NextItem,
   Question,
+  SynthesisQuestion,
 } from "./domain";
 
 export const CALLABLE = {
@@ -35,6 +36,12 @@ export const CALLABLE = {
   generateMock: "generateMock",
   setPrerequisites: "setPrerequisites",
   createShare: "createShare",
+  critiqueExplanation: "critiqueExplanation",
+  generateCheatSheet: "generateCheatSheet",
+  ingestPdf: "ingestPdf",
+  generateSynthesis: "generateSynthesis",
+  gradeSynthesis: "gradeSynthesis",
+  generateDiagram: "generateDiagram",
 } as const;
 
 export type CallableName = (typeof CALLABLE)[keyof typeof CALLABLE];
@@ -113,6 +120,9 @@ export interface SubmitAnswerRequest {
   question: string; // the prompt text (so grading has context without a re-fetch)
   answer: string;
   sessionId?: string;
+  /** No-peek integrity: true if the learner revealed the material before answering.
+   *  The server caps the grade (a peeked recall is a weaker memory). */
+  peeked?: boolean;
 }
 export interface GradeResult {
   quality: number; // 0..5 — feeds SM-2
@@ -243,6 +253,84 @@ export interface CreateShareResponse {
   conceptCount: number;
 }
 
+// --- critiqueExplanation (Feynman "explain it back") ----------------------
+// The learner explains a concept in their own words; the tutor critiques the
+// explanation itself — what's right, what's missing/wrong, plus a refined
+// version — rather than grading against one question.
+export interface CritiqueExplanationRequest {
+  conceptId: string;
+  explanation: string; // the learner's own free-text explanation
+}
+export interface CritiqueExplanationResponse {
+  score: number; // 0..1 — completeness/correctness of the explanation
+  feedback: string;
+  whatWasRight: string[];
+  whatWasMissing: string[];
+  refinedExplanation: string; // a tightened, correct version to learn from
+  model: string;
+}
+
+// --- generateCheatSheet ---------------------------------------------------
+// A dense one-page revision sheet for a subject: key definitions, formulas,
+// and facts distilled from its concepts. Cached per subject.
+export interface GenerateCheatSheetRequest {
+  subject: string;
+}
+export interface GenerateCheatSheetResponse {
+  subject: string;
+  markdown: string;
+  model: string;
+  cached: boolean;
+}
+
+// --- ingestPdf ------------------------------------------------------------
+// Import a lecture PDF / slide deck: the client uploads it to Storage, then
+// calls this. The model reads the PDF (multimodal) and extracts a concept
+// outline, which is ingested through the SAME pipeline as a vault. Same
+// response shape as ingestVault.
+export interface IngestPdfRequest {
+  storagePath: string; // gs path of the uploaded PDF, scoped to the user
+}
+export type IngestPdfResponse = IngestVaultResponse;
+
+// --- generateSynthesis ----------------------------------------------------
+// Cross-concept "integration" questions that weave two or more of a subject's
+// concepts together — the kind of exam question that spans topics.
+export interface GenerateSynthesisRequest {
+  subject: string;
+  count?: number; // default ~6
+}
+export interface GenerateSynthesisResponse {
+  subject: string;
+  questions: SynthesisQuestion[];
+  model: string;
+}
+
+// --- gradeSynthesis -------------------------------------------------------
+// Grade a synthesis answer against ALL the concepts it integrates, and advance
+// each of those concepts' mastery (you practised them all).
+export interface GradeSynthesisRequest {
+  question: string;
+  answer: string;
+  conceptIds: string[];
+}
+export interface GradeSynthesisResponse {
+  grade: GradeResult;
+}
+
+// --- generateDiagram ------------------------------------------------------
+// An LLM-authored Mermaid diagram for a concept (flowchart / ER / state, etc.),
+// rendered client-side. Cached per concept.
+export interface GenerateDiagramRequest {
+  conceptId: string;
+}
+export interface GenerateDiagramResponse {
+  conceptId: string;
+  mermaid: string;
+  model: string;
+  cached: boolean;
+}
+
 // --- Generic callable error payload --------------------------------------
 export interface CallableErrorDetail {
   code: string;
@@ -266,6 +354,12 @@ export interface CallableContract {
   generateMock: { request: GenerateMockRequest; response: GenerateMockResponse };
   setPrerequisites: { request: SetPrerequisitesRequest; response: SetPrerequisitesResponse };
   createShare: { request: CreateShareRequest; response: CreateShareResponse };
+  critiqueExplanation: { request: CritiqueExplanationRequest; response: CritiqueExplanationResponse };
+  generateCheatSheet: { request: GenerateCheatSheetRequest; response: GenerateCheatSheetResponse };
+  ingestPdf: { request: IngestPdfRequest; response: IngestPdfResponse };
+  generateSynthesis: { request: GenerateSynthesisRequest; response: GenerateSynthesisResponse };
+  gradeSynthesis: { request: GradeSynthesisRequest; response: GradeSynthesisResponse };
+  generateDiagram: { request: GenerateDiagramRequest; response: GenerateDiagramResponse };
 }
 
 // Re-export the domain types most consumers need alongside the API types.

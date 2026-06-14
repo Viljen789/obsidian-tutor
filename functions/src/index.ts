@@ -46,3 +46,12 @@ export { setPrerequisites } from "./flows/setPrerequisites";
 
 // Wave 3 — read-only shared decks
 export { createShare } from "./flows/createShare";
+
+// Wave 4 — Feynman "explain it back" + cheat-sheet generator
+export { critiqueExplanation } from "./flows/critiqueExplanation";
+export { generateCheatSheet } from "./flows/generateCheatSheet";
+
+// Wave 4b — lecture-PDF ingestion, synthesis questions, Mermaid diagrams
+export { ingestPdf } from "./flows/ingestPdf";
+export { generateSynthesis, gradeSynthesis } from "./flows/synthesis";
+export { generateDiagram } from "./flows/diagram";

@@ -51,3 +51,7 @@ export const completeStructured: typeof anthropic.completeStructured = isGemini
 export const streamText: typeof anthropic.streamText = isGemini
   ? gemini.streamText
   : anthropic.streamText;
+
+export const completeStructuredWithFile: typeof anthropic.completeStructuredWithFile = isGemini
+  ? gemini.completeStructuredWithFile
+  : anthropic.completeStructuredWithFile;

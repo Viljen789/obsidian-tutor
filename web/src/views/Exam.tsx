@@ -150,6 +150,48 @@ function SubjectChooser() {
         />
       </button>
 
+      <button
+        onClick={() => navigate("/cheatsheet")}
+        className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-5 py-4 text-left transition-colors hover:bg-accent/[0.04]"
+      >
+        <span className="flex items-center gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent">
+            <FileText size={17} />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[0.95rem] font-medium text-ink">Exam-day cheat sheet</span>
+            <span className="block text-xs text-muted">
+              Condense a subject into one printable page.
+            </span>
+          </span>
+        </span>
+        <ArrowRight
+          size={16}
+          className="shrink-0 text-muted transition-transform group-hover:translate-x-0.5"
+        />
+      </button>
+
+      <button
+        onClick={() => navigate("/synthesis")}
+        className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-5 py-4 text-left transition-colors hover:bg-accent/[0.04]"
+      >
+        <span className="flex items-center gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent">
+            <GraduationCap size={17} />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[0.95rem] font-medium text-ink">Synthesis questions</span>
+            <span className="block text-xs text-muted">
+              Integration questions that span several concepts.
+            </span>
+          </span>
+        </span>
+        <ArrowRight
+          size={16}
+          className="shrink-0 text-muted transition-transform group-hover:translate-x-0.5"
+        />
+      </button>
+
       <section>
         <Eyebrow>Choose a subject</Eyebrow>
         <Card className="mt-3 divide-y divide-border overflow-hidden">

@@ -161,3 +161,45 @@ export async function completeStructured<T>(
     .replace(/\s*```$/, "");
   return args.schema.parse(JSON.parse(cleaned));
 }
+
+/**
+ * Multimodal structured completion: like completeStructured, but the model also
+ * reads an attached file (e.g. a base64 PDF) alongside the prompt. Used for
+ * lecture-PDF ingestion. Gemini-only (multimodal input).
+ */
+export async function completeStructuredWithFile<T>(
+  args: CompleteArgs & { schema: ZodType<T>; file: { mimeType: string; base64: string } },
+): Promise<T> {
+  const prompt =
+    `${args.prompt}\n\nReturn ONLY a JSON object matching this schema ` +
+    `(no markdown fences, no commentary):\n${schemaHint(args.schema)}`;
+
+  const res = await withRetry(() =>
+    getClient().models.generateContent({
+      model: args.model,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { inlineData: { mimeType: args.file.mimeType, data: args.file.base64 } },
+            { text: prompt },
+          ],
+        },
+      ],
+      config: {
+        systemInstruction: args.system,
+        maxOutputTokens: args.maxTokens,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    }),
+  );
+
+  const text = res.text;
+  if (!text) throw new Error("Gemini returned no structured output from the file.");
+  const cleaned = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "");
+  return args.schema.parse(JSON.parse(cleaned));
+}
