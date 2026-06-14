@@ -54,6 +54,35 @@ export const paths = {
   // LLM-generated Mermaid diagrams, one per concept. Functions-written, client-read.
   diagrams: (uid: string) => `users/${uid}/diagrams`,
   diagramDoc: (uid: string, conceptId: string) => `users/${uid}/diagrams/${conceptId}`,
+
+  // --- Collaboration (Wave 5) ---------------------------------------------
+  // Public profiles: top-level, signed-in-readable, Functions-written.
+  profiles: () => `profiles`,
+  profileDoc: (uid: string) => `profiles/${uid}`,
+
+  // Friend requests: top-level, readable by sender/recipient, Functions-written.
+  friendRequests: () => `friendRequests`,
+  friendRequestDoc: (requestId: string) => `friendRequests/${requestId}`,
+
+  // Friends: per-user list, owner-read, Functions-written (bidirectional).
+  friends: (uid: string) => `users/${uid}/friends`,
+  friendDoc: (uid: string, friendUid: string) => `users/${uid}/friends/${friendUid}`,
+
+  // Presence: top-level, owner-write, readable by the owner + their friends.
+  presence: () => `presence`,
+  presenceDoc: (uid: string) => `presence/${uid}`,
+
+  // Group rooms (Wave 5b): top-level; members read/update; create+join via Functions.
+  rooms: () => `rooms`,
+  roomDoc: (roomId: string) => `rooms/${roomId}`,
+  roomPresence: (roomId: string) => `rooms/${roomId}/presence`,
+  roomPresenceDoc: (roomId: string, uid: string) => `rooms/${roomId}/presence/${uid}`,
+  roomMessages: (roomId: string) => `rooms/${roomId}/messages`,
+  roomMessageDoc: (roomId: string, msgId: string) => `rooms/${roomId}/messages/${msgId}`,
+
+  // Inbox: per-user incoming items (shared decks). Owner read/dismiss; Functions write.
+  inbox: (uid: string) => `users/${uid}/inbox`,
+  inboxDoc: (uid: string, itemId: string) => `users/${uid}/inbox/${itemId}`,
 } as const;
 
 /** Key for an explanationCache document: `${conceptId}_${depth}`. */

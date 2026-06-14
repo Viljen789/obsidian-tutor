@@ -16,6 +16,7 @@ import type {
   Flashcard,
   Mastery,
   NextItem,
+  PublicProfile,
   Question,
   SynthesisQuestion,
 } from "./domain";
@@ -42,6 +43,14 @@ export const CALLABLE = {
   generateSynthesis: "generateSynthesis",
   gradeSynthesis: "gradeSynthesis",
   generateDiagram: "generateDiagram",
+  ensureProfile: "ensureProfile",
+  sendFriendRequest: "sendFriendRequest",
+  respondFriendRequest: "respondFriendRequest",
+  removeFriend: "removeFriend",
+  createRoom: "createRoom",
+  joinRoom: "joinRoom",
+  shareSubjectToFriend: "shareSubjectToFriend",
+  importSharedDeck: "importSharedDeck",
 } as const;
 
 export type CallableName = (typeof CALLABLE)[keyof typeof CALLABLE];
@@ -331,6 +340,79 @@ export interface GenerateDiagramResponse {
   cached: boolean;
 }
 
+// --- Collaboration (Wave 5) ----------------------------------------------
+// ensureProfile: create (or refresh) the caller's public profile + mint a
+// unique friendCode on first call. Idempotent. No request body.
+export type EnsureProfileRequest = Record<string, never>;
+export type EnsureProfileResponse = PublicProfile;
+
+// sendFriendRequest: look up a user by their friendCode and create a pending
+// request. Rejects self-adds, duplicates, and already-friends.
+export interface SendFriendRequestRequest {
+  friendCode: string;
+}
+export interface SendFriendRequestResponse {
+  ok: boolean;
+  toName: string | null;
+}
+
+// respondFriendRequest: accept or decline. On accept, the friendship is written
+// to BOTH users' friend lists server-side (can't be forged).
+export interface RespondFriendRequestRequest {
+  requestId: string;
+  accept: boolean;
+}
+export interface RespondFriendRequestResponse {
+  ok: boolean;
+}
+
+// removeFriend: unfriend — removes the link from both sides.
+export interface RemoveFriendRequest {
+  uid: string;
+}
+export interface RemoveFriendResponse {
+  ok: boolean;
+}
+
+// --- rooms (Wave 5b) ------------------------------------------------------
+// createRoom + joinRoom are server-side: createRoom mints a unique join code;
+// joinRoom finds a room by code and adds the caller (a non-member can't read the
+// room to find it client-side). Pomodoro/chat/leave are client-writes (members).
+export interface CreateRoomRequest {
+  name: string;
+}
+export interface CreateRoomResponse {
+  roomId: string;
+  code: string;
+}
+export interface JoinRoomRequest {
+  code: string;
+}
+export interface JoinRoomResponse {
+  roomId: string;
+}
+
+// --- subject sharing to a friend -----------------------------------------
+// shareSubjectToFriend snapshots a subject (reusing the share mechanism) and
+// drops it in the friend's inbox. importSharedDeck copies a shared deck into the
+// importer's OWN vault (fresh concepts; their own mastery starts from zero).
+export interface ShareSubjectToFriendRequest {
+  subject: string;
+  toUid: string;
+}
+export interface ShareSubjectToFriendResponse {
+  ok: boolean;
+  shareId: string;
+}
+export interface ImportSharedDeckRequest {
+  shareId: string;
+}
+export interface ImportSharedDeckResponse {
+  importId: string;
+  conceptCount: number;
+  subject: string;
+}
+
 // --- Generic callable error payload --------------------------------------
 export interface CallableErrorDetail {
   code: string;
@@ -360,6 +442,14 @@ export interface CallableContract {
   generateSynthesis: { request: GenerateSynthesisRequest; response: GenerateSynthesisResponse };
   gradeSynthesis: { request: GradeSynthesisRequest; response: GradeSynthesisResponse };
   generateDiagram: { request: GenerateDiagramRequest; response: GenerateDiagramResponse };
+  ensureProfile: { request: EnsureProfileRequest; response: EnsureProfileResponse };
+  sendFriendRequest: { request: SendFriendRequestRequest; response: SendFriendRequestResponse };
+  respondFriendRequest: { request: RespondFriendRequestRequest; response: RespondFriendRequestResponse };
+  removeFriend: { request: RemoveFriendRequest; response: RemoveFriendResponse };
+  createRoom: { request: CreateRoomRequest; response: CreateRoomResponse };
+  joinRoom: { request: JoinRoomRequest; response: JoinRoomResponse };
+  shareSubjectToFriend: { request: ShareSubjectToFriendRequest; response: ShareSubjectToFriendResponse };
+  importSharedDeck: { request: ImportSharedDeckRequest; response: ImportSharedDeckResponse };
 }
 
 // Re-export the domain types most consumers need alongside the API types.

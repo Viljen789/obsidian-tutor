@@ -31,6 +31,8 @@ import { DailyQueue } from "../components/DailyQueue";
 import { ReadinessPanel } from "../components/ReadinessPanel";
 import { ShareButton } from "../components/ShareButton";
 import { AnkiExportButton } from "../components/AnkiExportButton";
+import { ShareToFriendButton } from "../components/ShareToFriendButton";
+import { Inbox } from "../components/Inbox";
 import { dueLabel, isDue, pct, STATUS_LABEL } from "../lib/format";
 
 interface SubjectGroup {
@@ -127,6 +129,8 @@ export function Dashboard() {
             : "Nothing due — a good moment to learn something new."
         }
       />
+
+      <Inbox />
 
       <DailyQueue />
 
@@ -340,6 +344,7 @@ function SubjectCard({ group, onOpen }: { group: SubjectGroup; onOpen: () => voi
       </button>
       <div className="flex flex-wrap items-center gap-2 border-t border-border px-5 py-2">
         <ShareButton subject={group.subject} />
+        <ShareToFriendButton subject={group.subject} />
         <AnkiExportButton subject={group.subject} />
       </div>
       <button

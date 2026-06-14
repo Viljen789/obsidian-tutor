@@ -41,4 +41,12 @@ export const api = {
   generateSynthesis: callable("generateSynthesis"),
   gradeSynthesis: callable("gradeSynthesis"),
   generateDiagram: callable("generateDiagram"),
+  ensureProfile: callable("ensureProfile"),
+  sendFriendRequest: callable("sendFriendRequest"),
+  respondFriendRequest: callable("respondFriendRequest"),
+  removeFriend: callable("removeFriend"),
+  createRoom: callable("createRoom"),
+  joinRoom: callable("joinRoom"),
+  shareSubjectToFriend: callable("shareSubjectToFriend"),
+  importSharedDeck: callable("importSharedDeck"),
 };

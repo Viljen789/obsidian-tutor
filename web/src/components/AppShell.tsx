@@ -16,12 +16,16 @@ import {
   LogOut,
   RotateCcw,
   Settings as SettingsIcon,
+  DoorOpen,
   Share2,
   TrendingUp,
+  Users,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "../lib/auth";
 import { StreakBadge } from "./StreakBadge";
+import { usePresenceHeartbeat } from "../lib/presence";
+import { useProfile } from "../lib/social";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -31,11 +35,18 @@ const NAV = [
   { to: "/exam", label: "Exam", icon: ClipboardCheck, end: false },
   { to: "/graph", label: "Graph", icon: Share2, end: false },
   { to: "/progress", label: "Progress", icon: TrendingUp, end: false },
+  { to: "/friends", label: "Friends", icon: Users, end: false },
+  { to: "/rooms", label: "Rooms", icon: DoorOpen, end: false },
 ];
 
 export function AppShell() {
   const { user, signOut } = useAuth();
   const who = user?.displayName ?? user?.email ?? "Signed in";
+
+  // App-wide collaboration plumbing: ensure the public profile exists, and keep
+  // this user's presence heartbeat fresh while the app is open.
+  useProfile();
+  usePresenceHeartbeat();
 
   return (
     <div className="flex min-h-full flex-col">

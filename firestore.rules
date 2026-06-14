@@ -70,6 +70,18 @@ service cloud.firestore {
         allow read: if isOwner(uid);
         allow write: if false;
       }
+
+      // Friends list: owner reads; only Functions write (both sides stay in sync).
+      match /friends/{friendUid} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      // Inbox (incoming shared decks, etc.): owner reads + dismisses; Functions write.
+      match /inbox/{itemId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if false;
+      }
     }
 
     // Read-only shared decks: anyone with the link may read; only Functions
@@ -78,6 +90,61 @@ service cloud.firestore {
     match /shares/{shareId} {
       allow read: if true;
       allow write: if false;
+    }
+
+    // --- Collaboration (Wave 5) -------------------------------------------
+    // Public profiles: any signed-in user may read (friend discovery); only
+    // Functions write (they mint the unique friendCode + sync name/photo).
+    match /profiles/{profileUid} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Friend requests: only the sender or recipient may read; Functions write
+    // (so a request / acceptance can't be forged).
+    match /friendRequests/{reqId} {
+      allow read: if request.auth != null
+        && (request.auth.uid == resource.data.fromUid
+            || request.auth.uid == resource.data.toUid);
+      allow write: if false;
+    }
+
+    // Presence: the owner writes their own heartbeat; a user may read their own
+    // presence, and that of anyone who lists them as a friend.
+    match /presence/{presenceUid} {
+      allow read: if request.auth != null
+        && (request.auth.uid == presenceUid
+            || exists(/databases/$(database)/documents/users/$(presenceUid)/friends/$(request.auth.uid)));
+      allow write: if request.auth != null && request.auth.uid == presenceUid;
+    }
+
+    // --- Group rooms (Wave 5b) --------------------------------------------
+    // A room is readable + updatable by its members (the synced pomodoro, leaving).
+    // Creating + joining go through Cloud Functions (unique code + membership
+    // integrity), so direct create/delete is closed.
+    match /rooms/{roomId} {
+      allow read, update: if request.auth != null
+        && request.auth.uid in resource.data.members;
+      allow create, delete: if false;
+
+      // Room presence: any member reads; a member writes only their own doc.
+      match /presence/{memberUid} {
+        allow read: if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/rooms/$(roomId)).data.members;
+        allow write: if request.auth != null
+          && request.auth.uid == memberUid
+          && request.auth.uid in get(/databases/$(database)/documents/rooms/$(roomId)).data.members;
+      }
+
+      // Room chat: members read; a member may post only as themselves.
+      match /messages/{msgId} {
+        allow read: if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/rooms/$(roomId)).data.members;
+        allow create: if request.auth != null
+          && request.auth.uid == request.resource.data.uid
+          && request.auth.uid in get(/databases/$(database)/documents/rooms/$(roomId)).data.members;
+        allow update, delete: if false;
+      }
     }
   }
 }

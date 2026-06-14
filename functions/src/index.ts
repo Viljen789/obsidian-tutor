@@ -55,3 +55,15 @@ export { generateCheatSheet } from "./flows/generateCheatSheet";
 export { ingestPdf } from "./flows/ingestPdf";
 export { generateSynthesis, gradeSynthesis } from "./flows/synthesis";
 export { generateDiagram } from "./flows/diagram";
+
+// Wave 5 — collaboration: profiles, friends, presence
+export {
+  ensureProfile,
+  sendFriendRequest,
+  respondFriendRequest,
+  removeFriend,
+} from "./flows/social";
+
+// Wave 5b — group rooms + subject sharing
+export { createRoom, joinRoom } from "./flows/rooms";
+export { shareSubjectToFriend, importSharedDeck } from "./flows/sharing";

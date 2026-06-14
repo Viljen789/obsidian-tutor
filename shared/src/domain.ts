@@ -136,6 +136,112 @@ export interface DiagramEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Collaboration (Wave 5) — profiles, friends, presence. Private study data
+// (mastery, schedule, notes) is NEVER shared; only these social bits are.
+// ---------------------------------------------------------------------------
+
+export interface PublicProfile {
+  uid: string;
+  displayName: string | null;
+  photoURL: string | null;
+  /** Short, unguessable code others use to send a friend request. */
+  friendCode: string;
+  updatedAt: IsoTimestamp;
+}
+
+export type FriendRequestStatus = "pending" | "accepted" | "declined";
+
+export interface FriendRequest {
+  id: string;
+  fromUid: string;
+  toUid: string;
+  status: FriendRequestStatus;
+  createdAt: IsoTimestamp;
+  /** Denormalised sender info so the recipient can show it without an extra read. */
+  fromName: string | null;
+  fromPhoto: string | null;
+}
+
+export interface Friend {
+  uid: string;
+  displayName: string | null;
+  photoURL: string | null;
+  since: IsoTimestamp;
+}
+
+export type PresenceStatus = "online" | "studying" | "focusing";
+
+export interface Presence {
+  uid: string;
+  status: PresenceStatus;
+  /** What they're studying right now (subject or concept title), or null. */
+  activity: string | null;
+  lastSeen: IsoTimestamp;
+}
+
+// ---------------------------------------------------------------------------
+// Group study rooms (Wave 5b) — a shared pomodoro + chat. The pomodoro syncs by
+// storing the start time once; every client ticks locally (no per-second writes).
+// ---------------------------------------------------------------------------
+
+export type PomodoroPhase = "idle" | "focus" | "break";
+
+export interface PomodoroState {
+  phase: PomodoroPhase;
+  /** ISO time the current phase started (server clock via the writer), or null when idle. */
+  startedAt: IsoTimestamp | null;
+  /** Length of the current phase in seconds. */
+  durationSec: number;
+  /** Completed focus cycles. */
+  cycle: number;
+  /** uid who last started/changed the timer. */
+  runningBy: string | null;
+  /** Configured focus + break lengths (seconds). */
+  focusSec: number;
+  breakSec: number;
+}
+
+export const DEFAULT_POMODORO: PomodoroState = {
+  phase: "idle",
+  startedAt: null,
+  durationSec: 25 * 60,
+  cycle: 0,
+  runningBy: null,
+  focusSec: 25 * 60,
+  breakSec: 5 * 60,
+};
+
+export interface Room {
+  id: string;
+  name: string;
+  ownerId: string;
+  /** Short code others use to join. */
+  code: string;
+  members: string[];
+  pomodoro: PomodoroState;
+  createdAt: IsoTimestamp;
+}
+
+export interface RoomMessage {
+  id: string;
+  uid: string;
+  name: string | null;
+  text: string;
+  createdAt: IsoTimestamp;
+}
+
+/** An item in a user's inbox — e.g. a friend shared a subject with them. */
+export interface InboxItem {
+  id: string;
+  type: "sharedDeck";
+  shareId: string;
+  subject: string;
+  fromUid: string;
+  fromName: string | null;
+  createdAt: IsoTimestamp;
+}
+
+// ---------------------------------------------------------------------------
 // Sessions & user
 // ---------------------------------------------------------------------------
 

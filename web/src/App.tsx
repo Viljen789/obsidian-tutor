@@ -30,6 +30,9 @@ const Drill = lazy(() => import("@/views/Drill").then((m) => ({ default: m.Drill
 const Mock = lazy(() => import("@/views/Mock").then((m) => ({ default: m.Mock })));
 const CheatSheet = lazy(() => import("@/views/CheatSheet").then((m) => ({ default: m.CheatSheet })));
 const Synthesis = lazy(() => import("@/views/Synthesis").then((m) => ({ default: m.Synthesis })));
+const Friends = lazy(() => import("@/views/Friends").then((m) => ({ default: m.Friends })));
+const Rooms = lazy(() => import("@/views/Rooms").then((m) => ({ default: m.Rooms })));
+const Room = lazy(() => import("@/views/Room").then((m) => ({ default: m.Room })));
 const Settings = lazy(() => import("@/views/Settings").then((m) => ({ default: m.Settings })));
 const Graph = lazy(() => import("@/views/Graph").then((m) => ({ default: m.Graph })));
 const Exam = lazy(() => import("@/views/Exam").then((m) => ({ default: m.Exam })));
@@ -64,6 +67,9 @@ export default function App() {
           <Route path="flashcards/:conceptId" element={<Flashcards />} />
           <Route path="drill" element={<Drill />} />
           <Route path="progress" element={<Progress />} />
+          <Route path="friends" element={<Friends />} />
+          <Route path="rooms" element={<Rooms />} />
+          <Route path="rooms/:roomId" element={<Room />} />
           <Route path="graph" element={<Graph />} />
           <Route path="exam" element={<Exam />} />
           <Route path="exam/:subject" element={<Exam />} />
