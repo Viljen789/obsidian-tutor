@@ -34,18 +34,82 @@ function getClient(): GoogleGenAI {
   return client;
 }
 
+/** True for transient Gemini errors worth retrying (free-tier 429s, 5xx). */
+function isRetriableError(err: unknown): boolean {
+  const e = err as { status?: number; code?: number; message?: string } | undefined;
+  const status = e?.status ?? e?.code;
+  if (status === 429 || status === 500 || status === 503) return true;
+  const msg = String(e?.message ?? err ?? "").toLowerCase();
+  return (
+    msg.includes("429") ||
+    msg.includes("resource_exhausted") ||
+    msg.includes("rate limit") ||
+    msg.includes("503") ||
+    msg.includes("unavailable") ||
+    msg.includes("overloaded")
+  );
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Run a Gemini call with jittered exponential backoff. The free tier returns
+ * 429 (RESOURCE_EXHAUSTED) under light load plus the occasional 5xx; a few
+ * retries ride those out so interactive features (chat, grading, explanations)
+ * don't fail on a transient blip.
+ */
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const MAX_ATTEMPTS = 4;
+  let delayMs = 600;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt >= MAX_ATTEMPTS || !isRetriableError(err)) throw err;
+      await sleep(delayMs + Math.floor(Math.random() * 300));
+      delayMs *= 2;
+    }
+  }
+}
+
 export async function completeText(args: CompleteArgs): Promise<string> {
-  const res = await getClient().models.generateContent({
-    model: args.model,
-    contents: args.prompt,
-    config: {
-      systemInstruction: args.system,
-      maxOutputTokens: args.maxTokens,
-      // Disable Flash's "thinking" — it would consume the output-token budget.
-      thinkingConfig: { thinkingBudget: 0 },
-    },
-  });
+  const res = await withRetry(() =>
+    getClient().models.generateContent({
+      model: args.model,
+      contents: args.prompt,
+      config: {
+        systemInstruction: args.system,
+        maxOutputTokens: args.maxTokens,
+        // Disable Flash's "thinking" — it would consume the output-token budget.
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    }),
+  );
   return (res.text ?? "").trim();
+}
+
+/**
+ * Streaming plain-text completion — yields incremental text pieces as the model
+ * produces them (for progressive UI render). Same config as completeText
+ * (thinking disabled). The initial request is retried on transient errors; once
+ * the stream is open, pieces flow until done.
+ */
+export async function* streamText(args: CompleteArgs): AsyncGenerator<string> {
+  const stream = await withRetry(() =>
+    getClient().models.generateContentStream({
+      model: args.model,
+      contents: args.prompt,
+      config: {
+        systemInstruction: args.system,
+        maxOutputTokens: args.maxTokens,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    }),
+  );
+  for await (const chunk of stream) {
+    const piece = chunk.text;
+    if (piece) yield piece;
+  }
 }
 
 /** JSON Schema for the prompt hint, minus keys Gemini's parser dislikes. */
@@ -73,18 +137,20 @@ export async function completeStructured<T>(
     `${args.prompt}\n\nReturn ONLY a JSON object matching this schema ` +
     `(no markdown fences, no commentary):\n${schemaHint(args.schema)}`;
 
-  const res = await getClient().models.generateContent({
-    model: args.model,
-    contents: prompt,
-    config: {
-      systemInstruction: args.system,
-      maxOutputTokens: args.maxTokens,
-      responseMimeType: "application/json",
-      // Disable Flash's "thinking" — otherwise it eats the output budget and the
-      // JSON gets truncated mid-string ("Unterminated string in JSON").
-      thinkingConfig: { thinkingBudget: 0 },
-    },
-  });
+  const res = await withRetry(() =>
+    getClient().models.generateContent({
+      model: args.model,
+      contents: prompt,
+      config: {
+        systemInstruction: args.system,
+        maxOutputTokens: args.maxTokens,
+        responseMimeType: "application/json",
+        // Disable Flash's "thinking" — otherwise it eats the output budget and
+        // the JSON gets truncated mid-string ("Unterminated string in JSON").
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    }),
+  );
 
   const text = res.text;
   if (!text) throw new Error("Gemini returned no structured output.");

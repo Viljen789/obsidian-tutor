@@ -20,6 +20,12 @@ import { upsertConcepts } from "../lib/firebase";
 import { parseNote } from "./parse";
 import { assembleGraphWithWarnings } from "./graph";
 import { inferPrerequisites, refinePrerequisitesWithLlm } from "./prereq";
+import {
+  buildAssetLookup,
+  uploadVaultAssets,
+  attachAssetsToConcepts,
+  type AssetLookup,
+} from "./assets";
 
 /** One markdown note after frontmatter parsing, before graph assembly. */
 export interface ParsedNote {
@@ -30,6 +36,8 @@ export interface ParsedNote {
   bodyMarkdown: string;
   /** Raw wikilink targets ([[Target]] / [[Target|alias]]) as written. */
   wikilinks: string[];
+  /** Image embeds (`![[img.png]]` / `![alt](img.png)`) as written, deduped. */
+  imageEmbeds: string[];
   frontmatter: Record<string, unknown>;
 }
 
@@ -39,12 +47,71 @@ export { assembleGraph, assembleGraphWithWarnings } from "./graph";
 export { inferPrerequisites, refinePrerequisitesWithLlm } from "./prereq";
 
 /** True for vault files we should parse: `.md`, not a dotfile / dotfolder. */
-function isVaultMarkdown(entryName: string): boolean {
+export function isVaultMarkdown(entryName: string): boolean {
   const normalized = entryName.replace(/\\/g, "/");
   if (!normalized.toLowerCase().endsWith(".md")) return false;
   // Ignore anything under a dot-prefixed segment (e.g. ".obsidian/...") or a
   // dotfile basename.
   return !normalized.split("/").some((seg) => seg.startsWith("."));
+}
+
+/**
+ * Shared ingest tail: graph assembly → prerequisite inference (LLM refinement
+ * with heuristic fallback) → idempotent upsert → response. Both `ingestVault`
+ * (zip upload) and `syncGitHub` (git re-pull) funnel their parsed notes through
+ * here so the pipeline — and its mastery-preserving guarantees — stay identical.
+ * Mastery is never touched. Caller is responsible for ensuring `notes` is
+ * non-empty.
+ *
+ * `lookup` is optional: when supplied (the zip / GitHub archive can resolve an
+ * embedded image's bytes by basename), embedded images are uploaded to Storage
+ * and their tokenized URLs attached to each concept BEFORE upsert. With no
+ * lookup, behavior is unchanged — no assets, identical concept docs.
+ */
+export async function ingestParsedNotes(
+  uid: string,
+  notes: ParsedNote[],
+  lookup?: AssetLookup,
+): Promise<IngestVaultResponse> {
+  // Assemble the concept graph (timestamp supplied here — pure fn).
+  const importId = crypto.randomUUID();
+  const isoNow = new Date().toISOString();
+  const { concepts: baseConcepts, warnings } = assembleGraphWithWarnings(
+    notes,
+    importId,
+    isoNow,
+  );
+
+  // Prerequisite inference: LLM refinement, falling back to the heuristic.
+  let concepts: Concept[];
+  try {
+    concepts = await refinePrerequisitesWithLlm(baseConcepts);
+  } catch (err) {
+    warnings.push(
+      `Prerequisite LLM refinement failed; used heuristic instead (${
+        (err as Error).message
+      }).`,
+    );
+    concepts = inferPrerequisites(baseConcepts);
+  }
+
+  // Vault image embeds → Storage uploads → per-concept asset URLs. Best-effort:
+  // a Storage failure must not abort the (already-computed) concept import.
+  // Runs before upsert so resolved URLs persist on the concept docs.
+  if (lookup) {
+    try {
+      const urls = await uploadVaultAssets({ uid, importId, notes, lookup });
+      attachAssetsToConcepts(concepts, notes, urls);
+    } catch (err) {
+      warnings.push(`Image asset upload failed; concepts saved without assets (${(err as Error).message}).`);
+    }
+  }
+
+  // Idempotent upsert — mastery is never touched.
+  await upsertConcepts(uid, concepts);
+
+  const subjects = [...new Set(concepts.map((c) => c.subject))].sort();
+  return { importId, conceptCount: concepts.length, subjects, warnings };
 }
 
 // --- Callable: ingestVault ------------------------------------------------
@@ -89,32 +156,16 @@ export const ingestVault = authedCallable<IngestVaultRequest, IngestVaultRespons
       );
     }
 
-    // 3. Assemble the concept graph (caller supplies the timestamp — pure fn).
-    const importId = crypto.randomUUID();
-    const isoNow = new Date().toISOString();
-    const { concepts: baseConcepts, warnings } = assembleGraphWithWarnings(
-      notes,
-      importId,
-      isoNow,
+    // Image lookup from the zip's non-markdown entries (resolved by basename when
+    // a note embeds an image). Bytes are read lazily, only for referenced images.
+    const lookup = buildAssetLookup(
+      entries
+        .filter((e) => !e.isDirectory)
+        .map((e) => ({ name: e.entryName, data: () => e.getData() })),
     );
 
-    // 4. Prerequisite inference: LLM refinement, falling back to the heuristic.
-    let concepts: Concept[];
-    try {
-      concepts = await refinePrerequisitesWithLlm(baseConcepts);
-    } catch (err) {
-      warnings.push(
-        `Prerequisite LLM refinement failed; used heuristic instead (${
-          (err as Error).message
-        }).`,
-      );
-      concepts = inferPrerequisites(baseConcepts);
-    }
-
-    // 5. Idempotent upsert — mastery is never touched.
-    await upsertConcepts(uid, concepts);
-
-    const subjects = [...new Set(concepts.map((c) => c.subject))].sort();
-    return { importId, conceptCount: concepts.length, subjects, warnings };
+    // 3. Graph assembly → prereq inference → asset upload/attach → idempotent
+    //    upsert → response. Shared with syncGitHub so the pipeline stays identical.
+    return ingestParsedNotes(uid, notes, lookup);
   },
 );

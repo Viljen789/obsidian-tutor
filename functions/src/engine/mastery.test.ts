@@ -72,25 +72,68 @@ describe("applyGrade — status transitions", () => {
   });
 });
 
-describe("applyGrade — dueDate computed from nowMs + intervalDays", () => {
-  it("first success schedules due +1 day from nowMs", () => {
+describe("applyGrade — dueDate computed from nowMs + intervalDays (FSRS schedule)", () => {
+  it("dueDate always equals nowMs + intervalDays*day, lastReviewed = ISO(now)", () => {
     const out = applyGrade(newMastery("c1"), 5, 0.9, NOW);
-    expect(out.intervalDays).toBe(1);
     expect(out.lastReviewed).toBe(NOW_ISO);
-    expect(out.dueDate).toBe(new Date(NOW + 1 * MS_PER_DAY).toISOString());
+    expect(out.intervalDays).toBeGreaterThanOrEqual(1);
+    expect(out.dueDate).toBe(new Date(NOW + out.intervalDays * MS_PER_DAY).toISOString());
   });
 
-  it("second success schedules due +6 days from nowMs", () => {
+  it("first Easy (q5) review seeds FSRS S/D and schedules ~15 days out", () => {
+    // Easy first answer ⇒ initial stability w[3]=15.47 ⇒ interval 15 days.
+    const out = applyGrade(newMastery("c1"), 5, 0.9, NOW);
+    expect(out.intervalDays).toBe(15);
+    expect(out.stability).toBeCloseTo(15.4722, 3);
+    expect(out.difficulty).toBeGreaterThan(0);
+    expect(out.dueDate).toBe(new Date(NOW + 15 * MS_PER_DAY).toISOString());
+  });
+
+  it("a successful follow-up review (on its due date) lengthens the interval", () => {
     const first = applyGrade(newMastery("c1"), 5, 0.9, NOW);
-    const second = applyGrade(first, 5, 0.9, NOW);
-    expect(second.intervalDays).toBe(6);
-    expect(second.dueDate).toBe(new Date(NOW + 6 * MS_PER_DAY).toISOString());
+    const dueMs = NOW + first.intervalDays * MS_PER_DAY;
+    const second = applyGrade(first, 5, 0.9, dueMs);
+    // Stability (and therefore the interval) grows on a successful recall.
+    expect(second.stability!).toBeGreaterThan(first.stability!);
+    expect(second.intervalDays).toBeGreaterThan(first.intervalDays);
+    expect(second.dueDate).toBe(new Date(dueMs + second.intervalDays * MS_PER_DAY).toISOString());
   });
 
-  it("a lapse reschedules due +1 day from nowMs", () => {
+  it("a lapse reschedules due ~1 day out and drops stability", () => {
+    // Build a real schedule, then fail it: FSRS shrinks the interval back to ~1d.
+    const reviewing = applyGrade(newMastery("c1"), 4, 0.6, NOW);
+    const lapsed = applyGrade(reviewing, 1, 0.1, NOW);
+    expect(lapsed.intervalDays).toBe(1);
+    expect(lapsed.stability!).toBeLessThan(reviewing.stability!);
+    expect(lapsed.dueDate).toBe(new Date(NOW + 1 * MS_PER_DAY).toISOString());
+  });
+
+  it("a first 'Hard' (q2) answer schedules ~1 day out without a prior schedule", () => {
     const out = applyGrade({ ...newMastery("c1"), masteryScore: 0.5 }, 2, 0.2, NOW);
     expect(out.intervalDays).toBe(1);
     expect(out.dueDate).toBe(new Date(NOW + 1 * MS_PER_DAY).toISOString());
+  });
+});
+
+describe("applyGrade — FSRS scheduler state", () => {
+  it("populates stability & difficulty on the first graded answer", () => {
+    const out = applyGrade(newMastery("c1"), 4, 0.7, NOW);
+    expect(out.stability).toBeGreaterThan(0);
+    expect(out.difficulty).toBeGreaterThanOrEqual(1);
+    expect(out.difficulty).toBeLessThanOrEqual(10);
+  });
+
+  it("keeps easeFactor vestigial — carried forward at its prior value (2.5)", () => {
+    const out = applyGrade(newMastery("c1"), 5, 1.0, NOW);
+    expect(out.easeFactor).toBe(2.5);
+    const again = applyGrade(out, 4, 0.8, NOW + MS_PER_DAY);
+    expect(again.easeFactor).toBe(2.5);
+  });
+
+  it("is deterministic — identical inputs give identical schedule output", () => {
+    const a = applyGrade({ ...newMastery("c1"), masteryScore: 0.4 }, 4, 0.7, NOW);
+    const b = applyGrade({ ...newMastery("c1"), masteryScore: 0.4 }, 4, 0.7, NOW);
+    expect(a).toEqual(b);
   });
 });
 

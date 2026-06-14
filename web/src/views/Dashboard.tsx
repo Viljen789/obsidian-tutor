@@ -11,16 +11,8 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowRight,
-  GraduationCap,
-  Library,
-  RotateCcw,
-  Sparkles,
-  Trash2,
-  Upload,
-} from "lucide-react";
-import type { Concept, Mastery, NextItem } from "@tutor/shared";
+import { ArrowRight, Library, Trash2, Upload, Zap } from "lucide-react";
+import type { Concept, Mastery } from "@tutor/shared";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { qk, useConcepts, useMastery } from "../lib/firestore-hooks";
@@ -35,6 +27,9 @@ import {
   Skeleton,
   SubjectDot,
 } from "../components/ui";
+import { DailyQueue } from "../components/DailyQueue";
+import { ReadinessPanel } from "../components/ReadinessPanel";
+import { ShareButton } from "../components/ShareButton";
 import { dueLabel, isDue, pct, STATUS_LABEL } from "../lib/format";
 
 interface SubjectGroup {
@@ -132,7 +127,25 @@ export function Dashboard() {
         }
       />
 
-      <NextUpCard navigate={navigate} hasDue={due.length > 0} />
+      <DailyQueue />
+
+      <ReadinessPanel />
+
+      <button
+        onClick={() => navigate("/drill")}
+        className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-5 py-4 text-left transition-colors hover:bg-review/[0.04]"
+      >
+        <span className="flex items-center gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-review/10 text-review">
+            <Zap size={17} />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[0.95rem] font-medium text-ink">Drill your weak spots</span>
+            <span className="block text-xs text-muted">A focused session on your shakiest concepts.</span>
+          </span>
+        </span>
+        <ArrowRight size={16} className="shrink-0 text-muted transition-transform group-hover:translate-x-0.5" />
+      </button>
 
       <DueSection
         due={due}
@@ -168,92 +181,6 @@ function PageHeader({ title, subtitle }: { title: string; subtitle: string }) {
       <h1 className="font-serif text-[2rem] tracking-tight text-ink">{title}</h1>
       <p className="mt-1 text-[0.95rem] text-muted">{subtitle}</p>
     </header>
-  );
-}
-
-/**
- * The hero CTA. Asks the sequencer what to do next and routes accordingly.
- * Until the learner taps, we show a calm two-button choice (Learn / Review) so
- * the page is useful even if the backend is slow or unavailable.
- */
-function NextUpCard({
-  navigate,
-  hasDue,
-}: {
-  navigate: ReturnType<typeof useNavigate>;
-  hasDue: boolean;
-}) {
-  const next = useMutation({
-    mutationFn: (): Promise<NextItem> => api.nextItem({}),
-    onSuccess: (item) => {
-      if (item.action === "review" && item.conceptId) navigate(`/review/${item.conceptId}`);
-      else if (item.action === "learn" && item.conceptId) navigate(`/learn/${item.conceptId}`);
-      // action "none" stays here and shows the rationale below.
-    },
-  });
-
-  const none = next.data?.action === "none";
-
-  return (
-    <Card className="overflow-hidden">
-      <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <Eyebrow tone={hasDue ? "review" : "accent"}>Recommended next</Eyebrow>
-          <h2 className="mt-1.5 font-serif text-xl text-ink">
-            {none
-              ? "You're all caught up"
-              : hasDue
-                ? "Strengthen what's fading"
-                : "Pick up where the path leads"}
-          </h2>
-          <p className="mt-1 text-sm leading-relaxed text-muted">
-            {none
-              ? next.data?.reason ??
-                "Nothing is due and no new concept is unlocked yet. Import more, or come back later."
-              : "Let the tutor choose the highest-value concept for right now."}
-          </p>
-        </div>
-        {!none && (
-          <Button
-            tone={hasDue ? "review" : "accent"}
-            icon={Sparkles}
-            loading={next.isPending}
-            onClick={() => next.mutate()}
-            className="shrink-0"
-          >
-            Start session
-          </Button>
-        )}
-      </div>
-
-      {/* Always offer the explicit two paths as a quiet fallback. */}
-      <div className="grid grid-cols-2 border-t border-border divide-x divide-border">
-        <button
-          onClick={() => navigate("/learn")}
-          className="group flex items-center justify-between gap-2 px-5 py-3.5 text-left transition-colors hover:bg-accent/[0.04]"
-        >
-          <span className="flex items-center gap-2 text-sm font-medium text-ink">
-            <GraduationCap size={16} className="text-accent" /> Learn
-          </span>
-          <ArrowRight
-            size={15}
-            className="text-muted transition-transform group-hover:translate-x-0.5"
-          />
-        </button>
-        <button
-          onClick={() => navigate("/review")}
-          className="group flex items-center justify-between gap-2 px-5 py-3.5 text-left transition-colors hover:bg-review/[0.05]"
-        >
-          <span className="flex items-center gap-2 text-sm font-medium text-ink">
-            <RotateCcw size={16} className="text-review" /> Review
-          </span>
-          <ArrowRight
-            size={15}
-            className="text-muted transition-transform group-hover:translate-x-0.5"
-          />
-        </button>
-      </div>
-    </Card>
   );
 }
 
@@ -410,12 +337,15 @@ function SubjectCard({ group, onOpen }: { group: SubjectGroup; onOpen: () => voi
           <p className="text-[0.7rem] uppercase tracking-wide text-muted">{STATUS_LABEL.mastered}</p>
         </div>
       </button>
+      <div className="border-t border-border px-5 py-2">
+        <ShareButton subject={group.subject} />
+      </div>
       <button
         type="button"
         onClick={() => setConfirming(true)}
         aria-label={`Delete ${group.subject} and its ${count} concept${count === 1 ? "" : "s"}`}
         title={`Delete ${group.subject}`}
-        className="absolute right-3 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-muted opacity-0 transition-all hover:bg-red-500/10 hover:text-red-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40 group-hover/card:opacity-100"
+        className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-lg text-muted opacity-0 transition-all hover:bg-red-500/10 hover:text-red-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/40 group-hover/card:opacity-100"
       >
         <Trash2 size={15} />
       </button>

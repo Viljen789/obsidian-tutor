@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Tutor">
+  <!-- Maskable variant: full-bleed indigo background, mark kept inside the ~80% safe zone so OS masks (circle/squircle) don't clip it. -->
+  <rect width="512" height="512" fill="#4f46e5"/>
+  <g fill="#faf9f6">
+    <!-- crossbar (pulled in to the safe zone) -->
+    <rect x="160" y="178" width="192" height="48" rx="12"/>
+    <!-- stem -->
+    <rect x="232" y="178" width="48" height="180" rx="12"/>
+  </g>
+</svg>

@@ -13,7 +13,7 @@
 import type { SubmitAnswerRequest, SubmitAnswerResponse } from "@tutor/shared";
 import { authedCallable, HttpsError } from "../lib/callable";
 import { llmSecrets } from "../lib/llm";
-import { getConcept, getMastery, setMastery } from "../lib/firebase";
+import { getConcept, getMastery, getSettings, setMastery } from "../lib/firebase";
 import { gradeAnswer } from "../ai/index";
 import { applyGrade, newMastery } from "../engine/index";
 
@@ -33,11 +33,19 @@ export const submitAnswer = authedCallable<SubmitAnswerRequest, SubmitAnswerResp
       conceptContext: concept.bodyMarkdown,
     });
 
-    // Load existing learner state, or start fresh for a never-seen concept.
+    // Load existing learner state (or start fresh) and the learner's settings —
+    // the masteredThreshold knob must drive when a concept counts as "mastered".
     const current = (await getMastery(uid, data.conceptId)) ?? newMastery(data.conceptId);
+    const settings = await getSettings(uid);
 
     // Advance SM-2 + mastery deterministically (time injected, engine stays pure).
-    const mastery = applyGrade(current, grade.quality, grade.score, Date.now());
+    const mastery = applyGrade(
+      current,
+      grade.quality,
+      grade.score,
+      Date.now(),
+      settings.masteredThreshold,
+    );
 
     await setMastery(uid, mastery);
 

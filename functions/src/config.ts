@@ -30,10 +30,14 @@ export const TOKEN_CAPS = {
   grade: 1100,
   hint: 400,
   classify: 512,
+  flashcards: 1400,
+  chat: 800,
+  mock: 1400,
 } as const;
 
 export const DEFAULTS = {
   questionCount: 3,
+  flashcardCount: 8,
   region: "us-central1",
   maxInstances: 10,
 } as const;

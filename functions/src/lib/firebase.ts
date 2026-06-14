@@ -16,6 +16,7 @@ import {
   type Concept,
   type ExplanationCacheEntry,
   type ExplanationDepth,
+  type FlashcardDeck,
   type Mastery,
   type UserSettings,
 } from "@tutor/shared";
@@ -43,6 +44,17 @@ export const db = getFirestore();
 export async function getConcept(uid: string, conceptId: string): Promise<Concept | null> {
   const snap = await db.doc(paths.concept(uid, conceptId)).get();
   return snap.exists ? (snap.data() as Concept) : null;
+}
+
+/** Persist a manual prerequisite override on a concept (merge — other fields untouched). */
+export async function setManualPrerequisites(
+  uid: string,
+  conceptId: string,
+  prerequisites: string[],
+): Promise<void> {
+  await db
+    .doc(paths.concept(uid, conceptId))
+    .set({ manualPrerequisites: prerequisites }, { merge: true });
 }
 
 export async function listConcepts(uid: string, subject?: string): Promise<Concept[]> {
@@ -73,10 +85,10 @@ export async function upsertConcepts(uid: string, concepts: Concept[]): Promise<
  * explanations (one per depth). The inverse of an import — used to clean up a
  * mistaken or stale vault import.
  *
- * Each concept fans out to up to 5 deletes (1 concept + 1 mastery + 3 cache
- * depths), so we chunk by concept to stay under Firestore's 500-ops-per-batch
- * limit (90 * 5 = 450). Batches commit sequentially. Returns the number of
- * concepts deleted (0 if the subject has none).
+ * Each concept fans out to up to 6 deletes (1 concept + 1 mastery + 1 flashcard
+ * deck + 3 cache depths), so we chunk by concept to stay under Firestore's
+ * 500-ops-per-batch limit (80 * 6 = 480). Batches commit sequentially. Returns
+ * the number of concepts deleted (0 if the subject has none).
  */
 export async function deleteSubjectData(uid: string, subject: string): Promise<number> {
   const snap = await db
@@ -86,12 +98,13 @@ export async function deleteSubjectData(uid: string, subject: string): Promise<n
   const conceptIds = snap.docs.map((d) => d.id);
 
   const DEPTHS: ExplanationDepth[] = ["refresher", "standard", "deep"];
-  const CONCEPTS_PER_BATCH = 90; // 90 * 5 deletes = 450, under the 500 limit
+  const CONCEPTS_PER_BATCH = 80; // 80 * 6 deletes = 480, under the 500 limit
   for (let i = 0; i < conceptIds.length; i += CONCEPTS_PER_BATCH) {
     const batch = db.batch();
     for (const id of conceptIds.slice(i, i + CONCEPTS_PER_BATCH)) {
       batch.delete(db.doc(paths.concept(uid, id)));
       batch.delete(db.doc(paths.masteryDoc(uid, id)));
+      batch.delete(db.doc(paths.flashcardDoc(uid, id)));
       for (const depth of DEPTHS) {
         batch.delete(db.doc(paths.explanationCacheDoc(uid, id, depth)));
       }
@@ -141,6 +154,22 @@ export async function setExplanationCache(
     .doc(paths.explanationCacheDoc(uid, entry.conceptId, entry.depth))
     .set(entry);
   void explanationCacheKey; // path builder kept in sync via shared
+}
+
+// --- Flashcard decks ------------------------------------------------------
+// One cached deck per concept (like explanationCache): generated on first
+// request, then served from Firestore so repeat drills never re-spend a call.
+
+export async function getFlashcardDeck(
+  uid: string,
+  conceptId: string,
+): Promise<FlashcardDeck | null> {
+  const snap = await db.doc(paths.flashcardDoc(uid, conceptId)).get();
+  return snap.exists ? (snap.data() as FlashcardDeck) : null;
+}
+
+export async function setFlashcardDeck(uid: string, deck: FlashcardDeck): Promise<void> {
+  await db.doc(paths.flashcardDoc(uid, deck.conceptId)).set(deck);
 }
 
 // --- Settings -------------------------------------------------------------

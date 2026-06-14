@@ -43,6 +43,15 @@ function depthForMastery(score: number): ExplanationDepth {
   return "deep";
 }
 
+/**
+ * The prerequisites the sequencer enforces. A manual override
+ * (`manualPrerequisites`) wins over the inferred list, so a learner can correct
+ * the graph and the change takes effect immediately.
+ */
+function effectivePrerequisites(concept: Concept): string[] {
+  return concept.manualPrerequisites ?? concept.prerequisites;
+}
+
 /** Resolve a concept's mastery, treating a missing entry as brand-new. */
 function masteryFor(
   conceptId: string,
@@ -87,7 +96,7 @@ export function selectNextItem(input: SequencerInput): NextItem {
   // A prerequisite is satisfied when its masteryScore >= masteryThreshold.
   const isUnlocked = (concept: Concept): { ok: boolean; missing: string[] } => {
     const missing: string[] = [];
-    for (const prereqId of concept.prerequisites) {
+    for (const prereqId of effectivePrerequisites(concept)) {
       const prereqMastery = masteryFor(prereqId, masteries);
       if (prereqMastery.masteryScore < settings.masteryThreshold) {
         missing.push(prereqId);

@@ -41,6 +41,16 @@ export async function completeText(args: CompleteArgs): Promise<string> {
 }
 
 /**
+ * Streaming plain-text completion. The active provider is Gemini, which has a
+ * real token stream; for the Anthropic provider we keep the interface satisfied
+ * with a single-yield fallback (emit the full completion once) rather than wiring
+ * a second streaming SDK path. Callers that want progressive UI use Gemini.
+ */
+export async function* streamText(args: CompleteArgs): AsyncGenerator<string> {
+  yield await completeText(args);
+}
+
+/**
  * Structured completion. Constrains the model to `schema` and returns the
  * validated object — no hand-parsing, no "model forgot a field" bugs. Supported
  * on the models in config.ts (Sonnet 4.6 / Haiku 4.5).

@@ -28,8 +28,20 @@ export interface Concept {
   links: string[];
   /** conceptIds that should be learned first — directed (see prerequisite inference). */
   prerequisites: string[];
+  /**
+   * Manual prerequisite override. When present it REPLACES the inferred
+   * `prerequisites` for sequencing. Written by the client (setPrerequisites);
+   * ingestion never touches it, so a learner's edits survive re-imports.
+   */
+  manualPrerequisites?: string[];
   /** Original path inside the vault, e.g. "Databases/Indexing.md". */
   sourcePath: string;
+  /**
+   * Vault image embeds for this note, uploaded to Storage at ingest. `name` is
+   * the embed reference as written (e.g. "er-diagram.png"); `url` is a stable,
+   * tokenized download URL the Markdown renderer resolves `![[name]]` against.
+   */
+  assets?: { name: string; url: string }[];
   /** Groups all concepts written by a single ingestion run. */
   importId: string;
   createdAt: IsoTimestamp;
@@ -71,6 +83,14 @@ export interface Mastery {
   repetitions: number; // consecutive successful reviews
   lastReviewed: IsoTimestamp | null;
   dueDate: IsoTimestamp | null;
+
+  /**
+   * FSRS scheduler state — memory stability (days) and difficulty (1..10). Set
+   * on first review; absent on legacy docs / never-reviewed concepts, in which
+   * case the scheduler initialises them from the first rating.
+   */
+  stability?: number;
+  difficulty?: number;
 
   history: MasteryHistoryEntry[];
 }
@@ -149,4 +169,124 @@ export interface NextItem {
   suggestedDepth: ExplanationDepth | null;
   /** Concepts blocked only by unmet prerequisites — surfaced for transparency. */
   blocked?: { conceptId: string; missingPrereqs: string[] }[];
+}
+
+// ---------------------------------------------------------------------------
+// Flashcards (Wave 2 — fast recall drill; self-graded, feeds the same SM-2 loop)
+// ---------------------------------------------------------------------------
+
+/** "cloze" = note-derived fill-in-the-blank; "qa" = model-written question/answer. */
+export type FlashcardKind = "cloze" | "qa";
+
+export interface Flashcard {
+  id: string;
+  conceptId: string;
+  kind: FlashcardKind;
+  /** Prompt side — a cloze sentence with a blank, or a question. */
+  front: string;
+  /** Answer side — the hidden term, or the model's answer. */
+  back: string;
+  /** Optional nudge shown before the answer is revealed. */
+  hint?: string;
+}
+
+/** A per-concept deck, cached server-side like explanations (a cost guardrail). */
+export interface FlashcardDeck {
+  conceptId: string;
+  cards: Flashcard[];
+  /** Model that wrote the qa cards; "" when the deck is purely note-derived. */
+  model: string;
+  createdAt: IsoTimestamp;
+}
+
+// ---------------------------------------------------------------------------
+// Activity stats (Wave 2 — daily streak). Client-written, low-stakes like sessions.
+// ---------------------------------------------------------------------------
+
+export interface UserStats {
+  /** Consecutive calendar days with at least one graded answer / card review. */
+  currentStreak: number;
+  longestStreak: number;
+  /** Local calendar day (YYYY-MM-DD) of the most recent study activity. */
+  lastActiveDay: string | null;
+  /** Lifetime count of graded answers + card reviews. */
+  totalReviews: number;
+  updatedAt: IsoTimestamp;
+}
+
+export const EMPTY_USER_STATS: UserStats = {
+  currentStreak: 0,
+  longestStreak: 0,
+  lastActiveDay: null,
+  totalReviews: 0,
+  updatedAt: "",
+};
+
+// ---------------------------------------------------------------------------
+// Practice-exam history (Wave 2). A client-written record of one sat exam.
+// ---------------------------------------------------------------------------
+
+export interface ExamQuestionResult {
+  conceptId: string;
+  type: QuestionType;
+  prompt: string;
+  /** SM-2 quality 0..5 from grading, or null if the answer couldn't be graded. */
+  quality: number | null;
+}
+
+export interface ExamRecord {
+  id: string;
+  subject: string;
+  takenAt: IsoTimestamp;
+  /** Wall-clock seconds spent sitting the paper, or null if untimed. */
+  durationSec: number | null;
+  /** Overall mark, 0..100. */
+  scorePercent: number;
+  questionCount: number;
+  gradedCount: number;
+  results: ExamQuestionResult[];
+}
+
+// ---------------------------------------------------------------------------
+// Tutor chat (Wave 3 — ask-a-follow-up). Session-local on the client; the
+// callable is stateless and is re-sent the running transcript each turn.
+// ---------------------------------------------------------------------------
+
+export type ChatRole = "user" | "tutor";
+
+export interface ChatMessage {
+  role: ChatRole;
+  content: string;
+}
+
+// ---------------------------------------------------------------------------
+// Study preferences (Wave 3 — exam-readiness countdown). Client-written.
+// ---------------------------------------------------------------------------
+
+export interface ExamPrefs {
+  /** subject -> exam date (ISO `yyyy-mm-dd`). Drives the readiness countdown. */
+  examDates: Record<string, string>;
+}
+
+export const EMPTY_EXAM_PREFS: ExamPrefs = { examDates: {} };
+
+// ---------------------------------------------------------------------------
+// Shared decks (Wave 3 — read-only public share of a subject). A snapshot,
+// written by Functions to a public top-level `shares/{id}` doc.
+// ---------------------------------------------------------------------------
+
+export interface SharedConcept {
+  id: string;
+  title: string;
+  subject: string;
+  /** The cached explanation markdown if one exists, else the raw note body. */
+  markdown: string;
+}
+
+export interface ShareDoc {
+  id: string;
+  subject: string;
+  ownerName: string | null;
+  createdAt: IsoTimestamp;
+  concepts: SharedConcept[];
 }

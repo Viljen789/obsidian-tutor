@@ -16,7 +16,7 @@
  * keeps it on-brand. Every stage degrades gracefully: no subjects, generation
  * failure, partial grading failures, and an empty paper are all handled.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -25,14 +25,26 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Circle,
+  Clock,
   FileText,
   GraduationCap,
+  History,
   RotateCcw,
   XCircle,
 } from "lucide-react";
-import type { Concept, GradeResult, Question } from "@tutor/shared";
+import type {
+  Concept,
+  ExamQuestionResult,
+  ExamRecord,
+  GradeResult,
+  Question,
+} from "@tutor/shared";
 import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
+import { saveExamRecord, useExamHistory } from "../lib/examHistory";
+import { shortDate } from "../lib/format";
 import { useConcepts, useInvalidateMastery } from "../lib/firestore-hooks";
+import { useStats } from "../lib/stats";
 import {
   Button,
   Card,
@@ -70,8 +82,10 @@ export function Exam() {
 function SubjectChooser() {
   const navigate = useNavigate();
   const concepts = useConcepts();
+  const history = useExamHistory();
 
   const subjects = useMemo(() => summariseSubjects(concepts.data ?? []), [concepts.data]);
+  const pastPapers = history.data ?? [];
 
   if (concepts.isPending) return <ChooserSkeleton />;
 
@@ -115,6 +129,27 @@ function SubjectChooser() {
         </p>
       </header>
 
+      <button
+        onClick={() => navigate("/mock")}
+        className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-5 py-4 text-left transition-colors hover:bg-accent/[0.04]"
+      >
+        <span className="flex items-center gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent">
+            <FileText size={17} />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[0.95rem] font-medium text-ink">Mock from a past paper</span>
+            <span className="block text-xs text-muted">
+              Paste an old exam — we'll write a fresh one in its style.
+            </span>
+          </span>
+        </span>
+        <ArrowRight
+          size={16}
+          className="shrink-0 text-muted transition-transform group-hover:translate-x-0.5"
+        />
+      </button>
+
       <section>
         <Eyebrow>Choose a subject</Eyebrow>
         <Card className="mt-3 divide-y divide-border overflow-hidden">
@@ -141,7 +176,59 @@ function SubjectChooser() {
           ))}
         </Card>
       </section>
+
+      {pastPapers.length > 0 && <PastPapers records={pastPapers} />}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Past papers — a calm history of previously sat exams. Each row re-takes that
+// subject. Hidden by the caller when there's no history.
+// ---------------------------------------------------------------------------
+
+function PastPapers({ records }: { records: ExamRecord[] }) {
+  const navigate = useNavigate();
+
+  return (
+    <section>
+      <Eyebrow>
+        <span className="inline-flex items-center gap-1.5">
+          <History size={12} />
+          Past papers
+        </span>
+      </Eyebrow>
+      <Card className="mt-3 divide-y divide-border overflow-hidden">
+        {records.map((r) => (
+          <button
+            key={r.id}
+            onClick={() => navigate(`/exam/${encodeURIComponent(r.subject)}`)}
+            className="group flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left transition-colors hover:bg-accent/[0.04]"
+          >
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 truncate text-[0.95rem] font-medium text-ink">
+                <SubjectDot subject={r.subject} />
+                {r.subject}
+              </p>
+              <p className="mt-0.5 pl-4 text-xs text-muted">
+                {shortDate(r.takenAt)}
+                {r.durationSec != null && ` · ${formatDuration(r.durationSec)}`}
+                {` · ${r.gradedCount}/${r.questionCount} marked`}
+              </p>
+            </div>
+            <span className="flex shrink-0 items-center gap-2">
+              <Pill tone={TONE} className="tabular-nums">
+                {r.scorePercent}%
+              </Pill>
+              <ArrowRight
+                size={15}
+                className="text-muted transition-colors group-hover:text-accent"
+              />
+            </span>
+          </button>
+        ))}
+      </Card>
+    </section>
   );
 }
 
@@ -167,8 +254,13 @@ type Phase = "intro" | "sitting" | "results";
 function ExamRunner({ subject }: { subject: string }) {
   const navigate = useNavigate();
   const invalidateMastery = useInvalidateMastery();
+  const { recordActivity } = useStats();
+  const { user } = useAuth();
 
   const [phase, setPhase] = useState<Phase>("intro");
+  // Epoch ms the learner began sitting, set the moment the answer sheet opens.
+  // A ref (not state) so it never triggers a re-render of the answer sheet.
+  const startedAtRef = useRef<number | null>(null);
   // conceptId titles for the results "revisit" links + nicer per-question labels.
   const concepts = useConcepts();
   const titleFor = useMemo(() => {
@@ -215,9 +307,21 @@ function ExamRunner({ subject }: { subject: string }) {
       );
       return graded;
     },
-    onSuccess: () => {
+    onSuccess: (marked) => {
+      // Capture wall-clock time the moment grading lands, then close the timer.
+      const startedAt = startedAtRef.current;
+      const durationSec =
+        startedAt != null ? Math.max(0, Math.round((Date.now() - startedAt) / 1000)) : null;
+      startedAtRef.current = null;
+
+      // Persist this sat exam as an ExamRecord — best-effort, never blocking the
+      // report. Mirrors the score ResultsReport computes (round over graded).
+      if (user?.uid) void persistExamRecord(user.uid, subject, marked, durationSec);
+
       // Many concepts moved — refresh the whole mastery cache once.
       invalidateMastery();
+      // Sitting an exam counts as study activity — advance the daily streak.
+      void recordActivity();
       setPhase("results");
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
@@ -248,7 +352,16 @@ function ExamRunner({ subject }: { subject: string }) {
             all in your own words, then submit to have the paper marked. Every
             answer also counts as a review, so your mastery updates as you go.
           </p>
-          <Button tone={TONE} icon={ClipboardCheck} className="mt-1" onClick={() => setPhase("sitting")}>
+          <Button
+            tone={TONE}
+            icon={ClipboardCheck}
+            className="mt-1"
+            onClick={() => {
+              // Stamp the start the moment the learner commits to sitting.
+              startedAtRef.current = Date.now();
+              setPhase("sitting");
+            }}
+          >
             Start the exam
           </Button>
         </Card>
@@ -322,6 +435,7 @@ function ExamRunner({ subject }: { subject: string }) {
         onRetake={() => {
           setAnswers({});
           mark.reset();
+          startedAtRef.current = null;
           setPhase("intro");
           void paper.refetch();
         }}
@@ -333,7 +447,11 @@ function ExamRunner({ subject }: { subject: string }) {
   return (
     <div className="animate-fade pb-28">
       <div className="mb-6">{back}</div>
-      <ExamHeader subject={subject} count={questions.length} />
+      <ExamHeader
+        subject={subject}
+        count={questions.length}
+        timer={<Timer startedAtRef={startedAtRef} running={!mark.isPending} />}
+      />
 
       <ol className="mt-6 space-y-4">
         {questions.map((q, i) => (
@@ -390,18 +508,76 @@ function ExamRunner({ subject }: { subject: string }) {
 // Exam header — the "question paper" masthead.
 // ---------------------------------------------------------------------------
 
-function ExamHeader({ subject, count }: { subject: string; count?: number }) {
+function ExamHeader({
+  subject,
+  count,
+  timer,
+}: {
+  subject: string;
+  count?: number;
+  /** Live elapsed timer, shown only while the answer sheet is open. */
+  timer?: React.ReactNode;
+}) {
   return (
     <header className="border-b border-border pb-5">
       <div className="flex flex-wrap items-center gap-2">
         <Eyebrow tone={TONE}>Practice exam</Eyebrow>
         {count != null && <Pill tone={TONE}>{count} questions</Pill>}
+        {timer}
       </div>
       <h1 className="mt-2 font-serif text-3xl tracking-tight text-ink sm:text-[2.1rem]">
         {subject}
       </h1>
     </header>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Timer — a live mm:ss elapsed clock for the sitting phase.
+//
+// Holds its OWN tick state and reads the start time from a ref, so each second
+// re-renders only this tiny node — never the answer sheet, so typing stays
+// smooth. The interval is cleaned up on unmount and whenever `running` flips
+// off (e.g. once the paper is submitted for marking).
+// ---------------------------------------------------------------------------
+
+function Timer({
+  startedAtRef,
+  running,
+}: {
+  startedAtRef: React.MutableRefObject<number | null>;
+  running: boolean;
+}) {
+  const [, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [running]);
+
+  const startedAt = startedAtRef.current;
+  const elapsedSec = startedAt != null ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
+
+  return (
+    <Pill tone="neutral">
+      <Clock size={12} />
+      <span className="tabular-nums" aria-label="Time elapsed">
+        {formatDuration(elapsedSec)}
+      </span>
+    </Pill>
+  );
+}
+
+/** Seconds → "m:ss" (or "h:mm:ss" past an hour). */
+function formatDuration(totalSec: number): string {
+  const s = Math.max(0, Math.floor(totalSec));
+  const hours = Math.floor(s / 3600);
+  const mins = Math.floor((s % 3600) / 60);
+  const secs = s % 60;
+  const mm = hours > 0 ? String(mins).padStart(2, "0") : String(mins);
+  const ss = String(secs).padStart(2, "0");
+  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -466,6 +642,50 @@ interface MarkedQuestion {
   question: Question;
   answer: string;
   grade: GradeResult | null;
+}
+
+/**
+ * Assemble a marked paper into an ExamRecord and persist it. Best-effort: any
+ * failure (Firestore down, offline) is swallowed so it can never block the
+ * results report from rendering. The score mirrors ResultsReport exactly —
+ * rounded total/maxQuality over the graded questions.
+ */
+async function persistExamRecord(
+  uid: string,
+  subject: string,
+  marked: MarkedQuestion[],
+  durationSec: number | null,
+): Promise<void> {
+  try {
+    const graded = marked.filter(
+      (m): m is MarkedQuestion & { grade: GradeResult } => !!m.grade,
+    );
+    const totalQuality = graded.reduce((sum, m) => sum + m.grade.quality, 0);
+    const maxQuality = graded.length * 5;
+    const scorePercent = maxQuality > 0 ? Math.round((totalQuality / maxQuality) * 100) : 0;
+
+    const results: ExamQuestionResult[] = marked.map((m) => ({
+      conceptId: m.question.conceptId,
+      type: m.question.type,
+      prompt: m.question.prompt,
+      quality: m.grade ? m.grade.quality : null,
+    }));
+
+    const record: ExamRecord = {
+      id: crypto.randomUUID(),
+      subject,
+      takenAt: new Date().toISOString(),
+      durationSec,
+      scorePercent,
+      questionCount: marked.length,
+      gradedCount: graded.length,
+      results,
+    };
+
+    await saveExamRecord(uid, record);
+  } catch {
+    // Saving history is non-essential — never let it break showing results.
+  }
 }
 
 /** A warm, honest one-line verdict for the overall score. */

@@ -10,8 +10,10 @@
  */
 
 import type {
+  ChatMessage,
   Concept,
   ExplanationDepth,
+  Flashcard,
   Mastery,
   NextItem,
   Question,
@@ -26,6 +28,13 @@ export const CALLABLE = {
   nextItem: "nextItem",
   deleteSubject: "deleteSubject",
   generateExam: "generateExam",
+  generateFlashcards: "generateFlashcards",
+  reviewCard: "reviewCard",
+  syncGitHub: "syncGitHub",
+  tutorChat: "tutorChat",
+  generateMock: "generateMock",
+  setPrerequisites: "setPrerequisites",
+  createShare: "createShare",
 } as const;
 
 export type CallableName = (typeof CALLABLE)[keyof typeof CALLABLE];
@@ -140,6 +149,100 @@ export interface NextItemRequest {
 }
 export type NextItemResponse = NextItem;
 
+// --- generateFlashcards ---------------------------------------------------
+// A per-concept recall deck: instant note-derived cloze cards plus a few
+// model-written Q/A cards. Cached server-side (like explanations) so repeat
+// visits never re-spend a model call. Reviewed via reviewCard (self-graded).
+export interface GenerateFlashcardsRequest {
+  conceptId: string;
+  count?: number; // target total cards — default ~8, clamped server-side
+}
+export interface GenerateFlashcardsResponse {
+  conceptId: string;
+  cards: Flashcard[];
+  model: string; // "" when the deck is purely note-derived
+  cached: boolean;
+}
+
+// --- reviewCard -----------------------------------------------------------
+// A flashcard review is a self-assessed recall (Anki-style Again/Hard/Good/
+// Easy → quality 1/3/4/5). It advances the concept's SM-2 / mastery exactly
+// like a graded answer, but spends no model call. Server-side (never trusted
+// from the client for the mastery math).
+export interface ReviewCardRequest {
+  conceptId: string;
+  quality: number; // 0..5, clamped server-side
+}
+export interface ReviewCardResponse {
+  mastery: Mastery; // updated learner state for the concept
+}
+
+// --- syncGitHub -----------------------------------------------------------
+// Re-pull a vault straight from its git repo and re-ingest it, reusing the
+// idempotent ingest pipeline (concepts upserted by id; mastery preserved).
+// Public repos need no token; private repos pass a GitHub PAT. Returns the
+// same shape as ingestVault.
+export interface SyncGitHubRequest {
+  repoUrl: string; // e.g. https://github.com/owner/repo (optionally .git)
+  ref?: string; // branch / tag / commit — defaults to the repo's default branch
+  token?: string; // GitHub PAT, only for private repos
+  subdir?: string; // optional path within the repo to treat as the vault root
+}
+export type SyncGitHubResponse = IngestVaultResponse;
+
+// --- setPrerequisites -----------------------------------------------------
+// Manual override of a concept's prerequisite edges. Replaces the inferred list
+// for sequencing; survives re-imports. Concepts are Functions-written, so this
+// is server-side. Returns the sanitized override that was stored.
+export interface SetPrerequisitesRequest {
+  conceptId: string;
+  prerequisites: string[]; // conceptIds to require before this one
+}
+export interface SetPrerequisitesResponse {
+  conceptId: string;
+  manualPrerequisites: string[];
+}
+
+// --- tutorChat ------------------------------------------------------------
+// Ask-a-follow-up: a stateless tutor turn grounded in the concept's notes.
+// The client keeps the running transcript (session-local) and re-sends it each
+// turn; the server appends nothing but the concept context.
+export interface TutorChatRequest {
+  conceptId: string;
+  messages: ChatMessage[]; // running transcript, oldest first; last is the user's new question
+}
+export interface TutorChatResponse {
+  reply: string;
+  model: string;
+}
+
+// --- generateMock ---------------------------------------------------------
+// Past-exam → mock: the learner pastes a past paper's questions; the model
+// writes a fresh set in the same STYLE and difficulty across the subject's
+// concepts (never copying the originals). Sat + marked via the exam flow.
+export interface GenerateMockRequest {
+  subject: string;
+  pastExamText: string; // pasted past-exam questions to mimic in style/coverage
+  count?: number; // default ~10
+}
+export interface GenerateMockResponse {
+  subject: string;
+  questions: Question[]; // each carries its conceptId for grading
+  model: string;
+}
+
+// --- createShare ----------------------------------------------------------
+// Snapshot a subject's concepts (title + explanation) into a public, read-only
+// `shares/{id}` doc anyone with the link can view. Server-side so the snapshot
+// is trustworthy and the id is an unguessable token.
+export interface CreateShareRequest {
+  subject: string;
+}
+export interface CreateShareResponse {
+  shareId: string;
+  conceptCount: number;
+}
+
 // --- Generic callable error payload --------------------------------------
 export interface CallableErrorDetail {
   code: string;
@@ -156,7 +259,14 @@ export interface CallableContract {
   nextItem: { request: NextItemRequest; response: NextItemResponse };
   deleteSubject: { request: DeleteSubjectRequest; response: DeleteSubjectResponse };
   generateExam: { request: GenerateExamRequest; response: GenerateExamResponse };
+  generateFlashcards: { request: GenerateFlashcardsRequest; response: GenerateFlashcardsResponse };
+  reviewCard: { request: ReviewCardRequest; response: ReviewCardResponse };
+  syncGitHub: { request: SyncGitHubRequest; response: SyncGitHubResponse };
+  tutorChat: { request: TutorChatRequest; response: TutorChatResponse };
+  generateMock: { request: GenerateMockRequest; response: GenerateMockResponse };
+  setPrerequisites: { request: SetPrerequisitesRequest; response: SetPrerequisitesResponse };
+  createShare: { request: CreateShareRequest; response: CreateShareResponse };
 }
 
 // Re-export the domain types most consumers need alongside the API types.
-export type { Concept, Mastery, Question, NextItem, ExplanationDepth };
+export type { Concept, Mastery, Question, NextItem, ExplanationDepth, Flashcard };

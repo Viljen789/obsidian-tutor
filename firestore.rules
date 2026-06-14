@@ -37,6 +37,35 @@ service cloud.firestore {
       match /sessions/{sessionId} {
         allow read, write: if isOwner(uid);
       }
+
+      // Flashcard decks: client reads, only Functions write (generated server-side).
+      match /flashcards/{conceptId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      // Practice-exam history: low-stakes record of a sat exam, owner read/write.
+      match /exams/{examId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      // Activity stats (streak summary): low-stakes, owner read/write.
+      match /stats/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      // Study preferences (exam dates): low-stakes, owner read/write.
+      match /prefs/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    // Read-only shared decks: anyone with the link may read; only Functions
+    // write (created via the createShare callable). The id is an unguessable
+    // random token, so a share is effectively unlisted.
+    match /shares/{shareId} {
+      allow read: if true;
+      allow write: if false;
     }
   }
 }

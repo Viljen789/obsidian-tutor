@@ -8,7 +8,7 @@ export default defineConfig({
   entry: ["src/index.ts"],
   outDir: "lib",
   format: ["cjs"],
-  target: "node20",
+  target: "node22",
   platform: "node",
   bundle: true,
   splitting: false,

@@ -250,3 +250,46 @@ describe("selectNextItem — subject filter", () => {
     expect(out.conceptId).toBe("algoNew");
   });
 });
+
+describe("selectNextItem — manual prerequisite override", () => {
+  it("a manual override REPLACES inferred prerequisites (can unblock)", () => {
+    // a is in progress (unmastered) but not a NEW candidate; without the override
+    // b would be blocked by its inferred prereq a. The empty override clears it.
+    const concepts = [
+      concept("a"),
+      concept("b", { prerequisites: ["a"], manualPrerequisites: [] }),
+    ];
+    const masteries = {
+      a: mastery("a", { status: "learning", masteryScore: 0.2, dueDate: null }),
+    };
+    const out = selectNextItem({ concepts, masteries, nowMs: NOW, settings: DEFAULT_USER_SETTINGS });
+    expect(out.action).toBe("learn");
+    expect(out.conceptId).toBe("b");
+  });
+
+  it("a manual override can ADD a gate inference missed", () => {
+    const concepts = [
+      concept("a"),
+      concept("c", { prerequisites: [], manualPrerequisites: ["a"] }),
+    ];
+    // a unmastered + in progress; c's manual prereq a now gates it.
+    const blocked = selectNextItem({
+      concepts,
+      masteries: { a: mastery("a", { status: "learning", masteryScore: 0.2, dueDate: null }) },
+      nowMs: NOW,
+      settings: DEFAULT_USER_SETTINGS,
+    });
+    expect(blocked.action).toBe("none");
+    expect(blocked.blocked?.some((b) => b.conceptId === "c")).toBe(true);
+
+    // Master a → c unlocks.
+    const unlocked = selectNextItem({
+      concepts,
+      masteries: { a: mastery("a", { status: "mastered", masteryScore: 0.9, dueDate: null }) },
+      nowMs: NOW,
+      settings: DEFAULT_USER_SETTINGS,
+    });
+    expect(unlocked.action).toBe("learn");
+    expect(unlocked.conceptId).toBe("c");
+  });
+});

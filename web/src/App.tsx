@@ -17,15 +17,21 @@ import { AppShell } from "@/components/AppShell";
 import { SignIn } from "@/views/SignIn";
 import { Dashboard } from "@/views/Dashboard";
 import { VaultImport } from "@/views/VaultImport";
-import { Learn } from "@/views/Learn";
-import { Review } from "@/views/Review";
 import { Progress } from "@/views/Progress";
 import { Button } from "@/components/ui";
 
-// Heavy / secondary routes — lazy so the force-graph + exam code stays out of the
-// initial bundle (loaded on first visit). The Suspense boundary lives in AppShell.
+// Lesson-flow + secondary routes are lazy so the markdown/katex/highlight stack
+// (now its own vendor chunk), the force-graph, and these views load on
+// navigation rather than at startup. The Suspense boundary lives in AppShell.
+const Learn = lazy(() => import("@/views/Learn").then((m) => ({ default: m.Learn })));
+const Review = lazy(() => import("@/views/Review").then((m) => ({ default: m.Review })));
+const Flashcards = lazy(() => import("@/views/Flashcards").then((m) => ({ default: m.Flashcards })));
+const Drill = lazy(() => import("@/views/Drill").then((m) => ({ default: m.Drill })));
+const Mock = lazy(() => import("@/views/Mock").then((m) => ({ default: m.Mock })));
+const Settings = lazy(() => import("@/views/Settings").then((m) => ({ default: m.Settings })));
 const Graph = lazy(() => import("@/views/Graph").then((m) => ({ default: m.Graph })));
 const Exam = lazy(() => import("@/views/Exam").then((m) => ({ default: m.Exam })));
+const ShareView = lazy(() => import("@/views/ShareView").then((m) => ({ default: m.ShareView })));
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -40,23 +46,32 @@ export default function App() {
     );
   }
 
-  if (!user) return <SignIn />;
-
   return (
     <Routes>
-      <Route element={<AppShell />}>
-        <Route index element={<Dashboard />} />
-        <Route path="import" element={<VaultImport />} />
-        <Route path="learn" element={<Learn />} />
-        <Route path="learn/:conceptId" element={<Learn />} />
-        <Route path="review" element={<Review />} />
-        <Route path="review/:conceptId" element={<Review />} />
-        <Route path="progress" element={<Progress />} />
-        <Route path="graph" element={<Graph />} />
-        <Route path="exam" element={<Exam />} />
-        <Route path="exam/:subject" element={<Exam />} />
-        <Route path="*" element={<NotFound />} />
-      </Route>
+      {/* Public — a read-only shared deck, viewable without signing in. */}
+      <Route path="share/:shareId" element={<ShareView />} />
+      {user ? (
+        <Route element={<AppShell />}>
+          <Route index element={<Dashboard />} />
+          <Route path="import" element={<VaultImport />} />
+          <Route path="learn" element={<Learn />} />
+          <Route path="learn/:conceptId" element={<Learn />} />
+          <Route path="review" element={<Review />} />
+          <Route path="review/:conceptId" element={<Review />} />
+          <Route path="flashcards" element={<Flashcards />} />
+          <Route path="flashcards/:conceptId" element={<Flashcards />} />
+          <Route path="drill" element={<Drill />} />
+          <Route path="progress" element={<Progress />} />
+          <Route path="graph" element={<Graph />} />
+          <Route path="exam" element={<Exam />} />
+          <Route path="exam/:subject" element={<Exam />} />
+          <Route path="mock" element={<Mock />} />
+          <Route path="settings" element={<Settings />} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
+      ) : (
+        <Route path="*" element={<SignIn />} />
+      )}
     </Routes>
   );
 }

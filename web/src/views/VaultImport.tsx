@@ -16,7 +16,9 @@ import {
   ArrowRight,
   CheckCircle2,
   FileArchive,
+  Github,
   Library,
+  Lock,
   Upload,
   X,
 } from "lucide-react";
@@ -213,9 +215,191 @@ export function VaultImport() {
               </span>
             )}
           </div>
+
+          {/* Or: pull straight from a GitHub repo */}
+          <div className="flex items-center gap-3 pt-1">
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
+              or
+            </span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
+          <GitHubSyncCard />
         </>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GitHub sync — pull a vault straight from its repo and re-ingest it. Reuses
+// the same idempotent pipeline (concepts upserted by id; mastery preserved),
+// so this is also a "refresh from source" path. Self-contained: own phase +
+// result state, its own ResultPanel on success.
+// ---------------------------------------------------------------------------
+
+function GitHubSyncCard() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  const [repoUrl, setRepoUrl] = useState("");
+  const [ref, setRef] = useState("");
+  const [showPrivate, setShowPrivate] = useState(false);
+  const [token, setToken] = useState("");
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [result, setResult] = useState<IngestVaultResponse | null>(null);
+
+  const busy = phase === "ingesting";
+  const canSync = repoUrl.trim().length > 0 && !busy;
+
+  const onSync = async () => {
+    if (!user || !canSync) return;
+    setPhase("ingesting");
+    setErrorMsg(null);
+    try {
+      const res = await api.syncGitHub({
+        repoUrl: repoUrl.trim(),
+        ref: ref.trim() || undefined,
+        token: showPrivate && token.trim() ? token.trim() : undefined,
+      });
+      setResult(res);
+      setPhase("done");
+      // New/updated concepts now exist server-side — refresh the caches.
+      void qc.invalidateQueries({ queryKey: qk.concepts(user.uid) });
+      void qc.invalidateQueries({ queryKey: qk.mastery(user.uid) });
+    } catch (e) {
+      setErrorMsg(
+        e instanceof Error && e.message
+          ? friendlyError(e.message)
+          : "The sync didn't complete. Please try again.",
+      );
+      setPhase("error");
+    }
+  };
+
+  const reset = () => {
+    setResult(null);
+    setErrorMsg(null);
+    setPhase("idle");
+  };
+
+  if (phase === "done" && result) {
+    return (
+      <ResultPanel result={result} onAgain={reset} onStart={() => navigate("/")} />
+    );
+  }
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-start gap-3">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent">
+          <Github size={20} />
+        </div>
+        <div className="min-w-0">
+          <h2 className="font-serif text-xl text-ink">Sync from GitHub</h2>
+          <p className="mt-1 text-sm leading-relaxed text-muted">
+            Point at your vault's GitHub repo and we'll pull the latest notes.
+            Re-syncing updates your notes without losing progress.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 space-y-3">
+        <label className="block">
+          <span className="text-xs font-medium text-muted">Repository URL</span>
+          <input
+            type="text"
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            value={repoUrl}
+            onChange={(e) => setRepoUrl(e.target.value)}
+            disabled={busy}
+            placeholder="https://github.com/owner/repo"
+            className="mt-1 w-full rounded-xl border border-border bg-bg/50 px-3 py-2.5 text-sm text-ink placeholder:text-muted/70 transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:opacity-50"
+          />
+        </label>
+
+        <label className="block">
+          <span className="text-xs font-medium text-muted">
+            Branch{" "}
+            <span className="font-normal text-muted/70">(optional)</span>
+          </span>
+          <input
+            type="text"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            value={ref}
+            onChange={(e) => setRef(e.target.value)}
+            disabled={busy}
+            placeholder="main"
+            className="mt-1 w-full rounded-xl border border-border bg-bg/50 px-3 py-2.5 text-sm text-ink placeholder:text-muted/70 transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:opacity-50"
+          />
+        </label>
+
+        {showPrivate ? (
+          <label className="block">
+            <span className="text-xs font-medium text-muted">
+              GitHub access token
+            </span>
+            <input
+              type="password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              disabled={busy}
+              placeholder="ghp_…"
+              className="mt-1 w-full rounded-xl border border-border bg-bg/50 px-3 py-2.5 text-sm text-ink placeholder:text-muted/70 transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:opacity-50"
+            />
+            <span className="mt-1 block text-xs text-muted">
+              Used once to read the repo. We never store it.
+            </span>
+          </label>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowPrivate(true)}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-muted transition-colors hover:text-ink disabled:opacity-50"
+          >
+            <Lock size={13} /> Private repo?
+          </button>
+        )}
+      </div>
+
+      {phase === "error" && errorMsg && (
+        <div className="mt-4">
+          <ErrorState
+            title="Sync failed"
+            description={errorMsg}
+            onRetry={canSync ? () => void onSync() : undefined}
+          />
+        </div>
+      )}
+
+      <div className="mt-5 flex items-center gap-3">
+        <Button
+          icon={Github}
+          disabled={!canSync}
+          loading={busy}
+          onClick={() => void onSync()}
+        >
+          {busy ? "Pulling your notes…" : "Sync"}
+        </Button>
+        {busy && (
+          <span className="text-sm text-muted">
+            Fetching the repo and building the concept graph.
+          </span>
+        )}
+      </div>
+    </Card>
   );
 }
 

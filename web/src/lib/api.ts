@@ -28,4 +28,11 @@ export const api = {
   nextItem: callable("nextItem"),
   deleteSubject: callable("deleteSubject"),
   generateExam: callable("generateExam"),
+  generateFlashcards: callable("generateFlashcards"),
+  reviewCard: callable("reviewCard"),
+  syncGitHub: callable("syncGitHub"),
+  tutorChat: callable("tutorChat"),
+  generateMock: callable("generateMock"),
+  setPrerequisites: callable("setPrerequisites"),
+  createShare: callable("createShare"),
 };

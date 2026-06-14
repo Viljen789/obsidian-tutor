@@ -14,7 +14,12 @@
  */
 import { initializeApp } from "firebase/app";
 import { connectAuthEmulator, getAuth, GoogleAuthProvider } from "firebase/auth";
-import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
+import {
+  connectFirestoreEmulator,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 import { connectStorageEmulator, getStorage } from "firebase/storage";
 
@@ -47,7 +52,12 @@ const firebaseConfig = hasConfig
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+// Persistent IndexedDB cache makes concepts/mastery/flashcards/exams readable
+// offline. `persistentMultipleTabManager` keeps the cache coherent across tabs.
+// (Modern replacement for the deprecated `enableIndexedDbPersistence`.)
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+});
 export const functions = getFunctions(app, "us-central1");
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();

@@ -13,6 +13,19 @@ import { clsx } from "clsx";
 import type { Concept, Mastery, MasteryStatus } from "@tutor/shared";
 import { useConcepts, useMastery } from "../lib/firestore-hooks";
 import { dueLabel, pct, shortDate, STATUS_LABEL } from "../lib/format";
+import { collectTags, filterByTags } from "../lib/tags";
+import {
+  reviewHeatmap,
+  reviewStreakStats,
+  statusBreakdown,
+  subjectMastery,
+  type HeatmapCell,
+  type ReviewStreakStats,
+  type StatusCount,
+  type SubjectMastery,
+} from "../lib/analytics";
+import { TagFilter } from "../components/TagFilter";
+import { Heatmap } from "../components/Heatmap";
 import {
   Button,
   Card,
@@ -25,6 +38,9 @@ import {
   SubjectDot,
   type Tone,
 } from "../components/ui";
+
+/** Trailing window for the review heatmap — 17 weeks reads as a tidy grid. */
+const HEATMAP_DAYS = 119;
 
 const STATUS_TONE: Record<MasteryStatus, Tone> = {
   new: "neutral",
@@ -41,9 +57,30 @@ export function Progress() {
   const masteryMap = mastery.data ?? {};
   const all = concepts.data ?? [];
 
+  // Tag filter (OR/ANY semantics — see lib/tags). State holds first-spelling
+  // tags; an empty set means "no filter".
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+
+  // Distinct tags (with counts) over the *full* concept list — the filter bar
+  // shows every tag regardless of the current selection.
+  const allTags = useMemo(() => collectTags(all), [all]);
+
+  // Concepts narrowed to the active tag selection (all of them when empty).
+  const filtered = useMemo(() => filterByTags(all, selectedTags), [all, selectedTags]);
+
+  const toggleTag = (tag: string) =>
+    setSelectedTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag);
+      else next.add(tag);
+      return next;
+    });
+
+  const clearTags = () => setSelectedTags(new Set());
+
   const rows = useMemo(
     () =>
-      all
+      filtered
         .map((concept) => ({ concept, mastery: masteryMap[concept.id] }))
         .sort(
           (a, b) =>
@@ -51,7 +88,7 @@ export function Progress() {
             (b.mastery?.masteryScore ?? 0) - (a.mastery?.masteryScore ?? 0) ||
             a.concept.title.localeCompare(b.concept.title),
         ),
-    [all, masteryMap],
+    [filtered, masteryMap],
   );
 
   const stats = useMemo(() => {
@@ -79,6 +116,13 @@ export function Progress() {
     }
     return [...map.entries()];
   }, [rows]);
+
+  // Analytics derive from the *full, unfiltered* learner model: momentum is
+  // about overall study activity, not whatever tag slice is currently selected.
+  const heatmap = useMemo(() => reviewHeatmap(masteryMap, { days: HEATMAP_DAYS }), [masteryMap]);
+  const streak = useMemo(() => reviewStreakStats(heatmap), [heatmap]);
+  const breakdown = useMemo(() => statusBreakdown(all, masteryMap), [all, masteryMap]);
+  const subjects = useMemo(() => subjectMastery(all, masteryMap), [all, masteryMap]);
 
   if (concepts.isPending || mastery.isPending) return <ProgressSkeleton />;
 
@@ -110,7 +154,17 @@ export function Progress() {
     <div className="animate-fade space-y-8">
       <Header />
 
-      {/* Summary strip */}
+      {/* Tag filter — only rendered when at least one concept carries a tag. */}
+      {allTags.length > 0 && (
+        <TagFilter
+          tags={allTags}
+          selected={selectedTags}
+          onToggle={toggleTag}
+          onClear={clearTags}
+        />
+      )}
+
+      {/* Summary strip — reflects the active filter. */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Concepts" value={stats.total} />
         <Stat label={STATUS_LABEL.mastered} value={stats.counts.mastered} tone="accent" />
@@ -122,20 +176,45 @@ export function Progress() {
         <Stat label="Reviews done" value={stats.reviews} />
       </div>
 
-      {groups.map(([subject, items]) => (
-        <section key={subject}>
-          <div className="mb-3 flex items-center gap-2">
-            <SubjectDot subject={subject} />
-            <Eyebrow>{subject}</Eyebrow>
-            <span className="text-xs text-muted">{items.length}</span>
-          </div>
-          <Card className="divide-y divide-border overflow-hidden">
-            {items.map(({ concept, mastery: m }) => (
-              <ConceptProgressRow key={concept.id} concept={concept} mastery={m} />
-            ))}
-          </Card>
-        </section>
-      ))}
+      {/* Your momentum — review activity + mastery shape, over the whole vault.
+          Independent of the tag filter above, which only narrows the list below. */}
+      <MomentumSection
+        heatmap={heatmap}
+        streak={streak}
+        breakdown={breakdown}
+        subjects={subjects}
+        totalConcepts={all.length}
+      />
+
+      {groups.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={Sprout}
+            title="No concepts match this filter"
+            description="No concepts carry the selected tags. Clear the filter to see everything again."
+            action={
+              <Button variant="secondary" tone="neutral" onClick={clearTags}>
+                Clear filter
+              </Button>
+            }
+          />
+        </Card>
+      ) : (
+        groups.map(([subject, items]) => (
+          <section key={subject}>
+            <div className="mb-3 flex items-center gap-2">
+              <SubjectDot subject={subject} />
+              <Eyebrow>{subject}</Eyebrow>
+              <span className="text-xs text-muted">{items.length}</span>
+            </div>
+            <Card className="divide-y divide-border overflow-hidden">
+              {items.map(({ concept, mastery: m }) => (
+                <ConceptProgressRow key={concept.id} concept={concept} mastery={m} />
+              ))}
+            </Card>
+          </section>
+        ))
+      )}
     </div>
   );
 }
@@ -166,6 +245,150 @@ function Stat({ label, value, tone = "neutral" }: { label: string; value: number
       <p className={clsx("font-serif text-2xl tabular-nums", color)}>{value}</p>
       <p className="mt-0.5 text-xs text-muted">{label}</p>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Your momentum — analytics block: review heatmap, status breakdown, and a
+// per-subject mastery summary. All computed from the full learner model.
+// ---------------------------------------------------------------------------
+
+function MomentumSection({
+  heatmap,
+  streak,
+  breakdown,
+  subjects,
+  totalConcepts,
+}: {
+  heatmap: HeatmapCell[];
+  streak: ReviewStreakStats;
+  breakdown: StatusCount[];
+  subjects: SubjectMastery[];
+  totalConcepts: number;
+}) {
+  return (
+    <section className="space-y-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="font-serif text-xl text-ink">Your momentum</h2>
+        <Eyebrow>Last 17 weeks</Eyebrow>
+      </div>
+
+      {/* Review heatmap + at-a-glance activity totals. */}
+      <Card className="p-5">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
+          <MomentumStat label="Reviews" value={streak.totalReviews} />
+          <MomentumStat label="Active days" value={streak.activeDays} />
+          <MomentumStat label="Best day" value={streak.bestDay} />
+          <MomentumStat label="Day streak" value={streak.currentStreak} tone="accent" />
+        </div>
+        <div className="mt-4">
+          <Heatmap data={heatmap} />
+        </div>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Mastery breakdown by status. */}
+        <Card className="p-5">
+          <Eyebrow>Mastery breakdown</Eyebrow>
+          <StatusBreakdownRow breakdown={breakdown} total={totalConcepts} />
+        </Card>
+
+        {/* Per-subject mastery summary. */}
+        <Card className="p-5">
+          <Eyebrow>By subject</Eyebrow>
+          {subjects.length === 0 ? (
+            <p className="mt-3 text-sm text-muted">No subjects yet.</p>
+          ) : (
+            <ul className="mt-3 space-y-3">
+              {subjects.map((s) => (
+                <SubjectMasteryRow key={s.subject} item={s} />
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+    </section>
+  );
+}
+
+function MomentumStat({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: number;
+  tone?: Tone;
+}) {
+  const color = tone === "accent" ? "text-accent" : tone === "review" ? "text-review" : "text-ink";
+  return (
+    <div>
+      <p className={clsx("font-serif text-xl tabular-nums", color)}>{Math.round(value)}</p>
+      <p className="text-[0.7rem] uppercase tracking-wide text-muted">{label}</p>
+    </div>
+  );
+}
+
+/** A single stacked bar of status proportions, with a labelled legend below. */
+function StatusBreakdownRow({ breakdown, total }: { breakdown: StatusCount[]; total: number }) {
+  const sum = breakdown.reduce((acc, b) => acc + b.count, 0);
+  const present = breakdown.filter((b) => b.count > 0);
+
+  const fillFor = (status: MasteryStatus): string =>
+    status === "mastered" || status === "learning"
+      ? "bg-accent"
+      : status === "review"
+        ? "bg-review"
+        : "bg-ink/20";
+
+  return (
+    <div className="mt-3">
+      {/* Proportional bar — a quiet, single-row stacked summary. */}
+      <div
+        className="flex h-2.5 w-full overflow-hidden rounded-full bg-ink/[0.06]"
+        role="img"
+        aria-label={`Mastery breakdown across ${Math.round(total)} concepts`}
+      >
+        {sum > 0 &&
+          present.map((b) => (
+            <div
+              key={b.status}
+              className={clsx("h-full first:rounded-l-full last:rounded-r-full", fillFor(b.status))}
+              style={{ width: `${(b.count / sum) * 100}%` }}
+            />
+          ))}
+      </div>
+
+      {/* Legend with raw counts. */}
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
+        {breakdown.map((b) => (
+          <span key={b.status} className="inline-flex items-center gap-1.5">
+            <Pill tone={STATUS_TONE[b.status]}>{STATUS_LABEL[b.status]}</Pill>
+            <span className="text-sm tabular-nums text-ink">{b.count}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SubjectMasteryRow({ item }: { item: SubjectMastery }) {
+  return (
+    <li>
+      <div className="flex items-center gap-2">
+        <SubjectDot subject={item.subject} />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+          {item.subject}
+        </span>
+        <span className="shrink-0 text-xs tabular-nums text-muted">
+          {item.mastered}/{item.total} mastered
+        </span>
+      </div>
+      <div className="mt-2 flex items-center gap-3">
+        <ProgressBar value={item.avg} className="max-w-none" />
+        <span className="shrink-0 text-xs tabular-nums text-muted">{pct(item.avg)}%</span>
+      </div>
+    </li>
   );
 }
 
@@ -204,6 +427,16 @@ function ConceptProgressRow({
             />
             <span className="shrink-0 text-xs tabular-nums text-muted">{pct(score)}%</span>
           </div>
+          {concept.tags.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {concept.tags.map((tag) => (
+                <Pill key={tag} tone="neutral">
+                  <span className="opacity-60">#</span>
+                  {tag}
+                </Pill>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="hidden shrink-0 items-center gap-5 text-right sm:flex">
@@ -287,6 +520,15 @@ function ProgressSkeleton() {
         {[0, 1, 2, 3].map((i) => (
           <Skeleton key={i} className="h-20 rounded-2xl" />
         ))}
+      </div>
+      {/* Momentum block placeholder. */}
+      <div className="space-y-4">
+        <Skeleton className="h-7 w-40" />
+        <Skeleton className="h-44 w-full rounded-2xl" />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Skeleton className="h-32 rounded-2xl" />
+          <Skeleton className="h-32 rounded-2xl" />
+        </div>
       </div>
       <Skeleton className="h-64 w-full rounded-2xl" />
     </div>

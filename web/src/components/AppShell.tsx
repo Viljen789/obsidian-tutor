@@ -10,20 +10,24 @@ import {
   BookOpen,
   ClipboardCheck,
   GraduationCap,
+  Layers,
   LayoutDashboard,
   Loader2,
   LogOut,
   RotateCcw,
+  Settings as SettingsIcon,
   Share2,
   TrendingUp,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "../lib/auth";
+import { StreakBadge } from "./StreakBadge";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/learn", label: "Learn", icon: GraduationCap, end: false },
   { to: "/review", label: "Review", icon: RotateCcw, end: false },
+  { to: "/flashcards", label: "Cards", icon: Layers, end: false },
   { to: "/exam", label: "Exam", icon: ClipboardCheck, end: false },
   { to: "/graph", label: "Graph", icon: Share2, end: false },
   { to: "/progress", label: "Progress", icon: TrendingUp, end: false },
@@ -36,15 +40,18 @@ export function AppShell() {
   return (
     <div className="flex min-h-full flex-col">
       <header className="sticky top-0 z-20 border-b border-border bg-bg/85 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-3xl items-center justify-between gap-4 px-5">
-          <NavLink to="/" className="flex items-center gap-2 text-ink">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-accent/10 text-accent">
-              <BookOpen size={16} />
-            </span>
-            <span className="font-serif text-lg tracking-tight">Tutor</span>
-          </NavLink>
+        <div className="mx-auto flex h-14 max-w-3xl items-center justify-between gap-3 px-5">
+          <div className="flex items-center gap-2.5">
+            <NavLink to="/" className="flex items-center gap-2 text-ink">
+              <span className="grid h-7 w-7 place-items-center rounded-lg bg-accent/10 text-accent">
+                <BookOpen size={16} />
+              </span>
+              <span className="font-serif text-lg tracking-tight">Tutor</span>
+            </NavLink>
+            <StreakBadge />
+          </div>
 
-          <nav className="flex items-center gap-0.5">
+          <nav className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
             {NAV.map(({ to, label, icon: Icon, end }) => (
               <NavLink
                 key={to}
@@ -52,7 +59,7 @@ export function AppShell() {
                 end={end}
                 className={({ isActive }) =>
                   clsx(
-                    "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors",
+                    "flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors",
                     isActive
                       ? "bg-ink/[0.06] text-ink"
                       : "text-muted hover:text-ink",
@@ -65,14 +72,28 @@ export function AppShell() {
             ))}
           </nav>
 
-          <button
-            onClick={() => void signOut()}
-            title={`Sign out (${who})`}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-muted transition-colors hover:text-ink"
-          >
-            <LogOut size={16} />
-            <span className="hidden md:inline">Sign out</span>
-          </button>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <NavLink
+              to="/settings"
+              title="Settings"
+              className={({ isActive }) =>
+                clsx(
+                  "grid h-8 w-8 place-items-center rounded-lg transition-colors",
+                  isActive ? "bg-ink/[0.06] text-ink" : "text-muted hover:text-ink",
+                )
+              }
+            >
+              <SettingsIcon size={16} />
+            </NavLink>
+            <button
+              onClick={() => void signOut()}
+              title={`Sign out (${who})`}
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-muted transition-colors hover:text-ink"
+            >
+              <LogOut size={16} />
+              <span className="hidden md:inline">Sign out</span>
+            </button>
+          </div>
         </div>
       </header>
 

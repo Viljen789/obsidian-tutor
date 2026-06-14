@@ -16,6 +16,7 @@ import type { NextItem } from "@tutor/shared";
 import { authedCallable } from "../lib/callable";
 import { listConcepts, listMastery, getSettings } from "../lib/firebase";
 import { selectNextItem } from "./sequencer";
+import { countNewlyIntroducedToday } from "./dailyCount";
 
 // --- Pure engine surface (re-exported; signatures are the frozen contract) ---
 export { updateSm2, type Sm2State } from "./sm2";
@@ -34,12 +35,16 @@ export const nextItem = authedCallable<{ subject?: string }, NextItem>(
       listMastery(ctx.uid),
       getSettings(ctx.uid),
     ]);
+    const nowMs = Date.now();
     return selectNextItem({
       concepts,
       masteries,
-      nowMs: Date.now(),
+      nowMs,
       settings,
       subject,
+      // Enforce the daily-new cap: count concepts first introduced today so the
+      // sequencer stops unlocking new material once dailyNewLimit is reached.
+      newlyIntroducedToday: countNewlyIntroducedToday(masteries, nowMs),
     });
   },
 );

@@ -47,3 +47,7 @@ export const completeText: typeof anthropic.completeText = isGemini
 export const completeStructured: typeof anthropic.completeStructured = isGemini
   ? gemini.completeStructured
   : anthropic.completeStructured;
+
+export const streamText: typeof anthropic.streamText = isGemini
+  ? gemini.streamText
+  : anthropic.streamText;

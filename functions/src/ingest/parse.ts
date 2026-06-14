@@ -46,6 +46,77 @@ function normalizeTags(raw: unknown): string[] {
  */
 const INLINE_TAG_RE = /(?<=^|\s)#([\p{L}][\p{L}\p{N}/_-]*)/gu;
 
+/** Image file extensions we recognise in embeds (no leading dot, lowercase). */
+const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "svg", "webp", "avif"];
+
+/**
+ * Obsidian image embed: `![[name]]`, `![[name|size]]`, `![[path/name.png|200]]`.
+ * Captures the WHOLE inner reference *as written* (including any `|size`), since
+ * the contract stores the embed verbatim; matching against the archive normalises
+ * the basename later. Unlike a wikilink, the embed leads with `!`. The reference
+ * runs up to `]]`. Any extension is allowed (Obsidian only embeds these for
+ * images/attachments).
+ */
+const OBSIDIAN_EMBED_RE = /!\[\[([^\]]+?)\]\]/g;
+
+/**
+ * Standard Markdown image: `![alt](path)` / `![alt](path "title")`. Captures the
+ * URL/path only when it carries a recognised image extension (so non-image links
+ * aren't swept in). The path is either `<...>` (may contain spaces) or a bare run
+ * with no whitespace; an optional trailing `"title"`/`'title'` is dropped, and
+ * query/hash suffixes are tolerated when the extension is checked.
+ */
+const MARKDOWN_IMAGE_RE =
+  /!\[[^\]]*\]\(\s*(?:<([^>]+)>|([^)\s]+))(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g;
+
+/** True if `target`'s path (ignoring ?query / #hash) ends in an image extension. */
+function hasImageExtension(target: string): boolean {
+  const pathOnly = target.split(/[?#]/, 1)[0] ?? target;
+  const dot = pathOnly.lastIndexOf(".");
+  if (dot === -1) return false;
+  return IMAGE_EXTENSIONS.includes(pathOnly.slice(dot + 1).toLowerCase());
+}
+
+/**
+ * Extract image embeds from a note body (deduped, order-preserving,
+ * case-insensitive de-dup), as written: Obsidian `![[name]]` / `![[name|size]]`
+ * and standard `![alt](path.png)` whose target has an image extension. Embeds
+ * inside fenced/inline code are ignored (reuses the tag code-stripping helper).
+ */
+export function extractImageEmbeds(body: string): string[] {
+  const scannable = stripCodeForTags(body);
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  const push = (raw: string | undefined): void => {
+    const ref = raw?.trim();
+    if (!ref) return;
+    const key = ref.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(ref);
+    }
+  };
+
+  // A single ordered scan over both embed syntaxes keeps document order. Markdown
+  // `![alt](...)` and Obsidian `![[...]]` never overlap (the second `[` differs),
+  // so matching them independently and merging by first-occurrence is safe.
+  const matches: { index: number; ref: string }[] = [];
+  for (const m of scannable.matchAll(OBSIDIAN_EMBED_RE)) {
+    if (m[1]) matches.push({ index: m.index ?? 0, ref: m[1] });
+  }
+  for (const m of scannable.matchAll(MARKDOWN_IMAGE_RE)) {
+    const target = m[1] ?? m[2]; // <bracketed> or bare path
+    if (target && hasImageExtension(target)) {
+      matches.push({ index: m.index ?? 0, ref: target });
+    }
+  }
+  matches.sort((a, b) => a.index - b.index);
+  for (const m of matches) push(m.ref);
+
+  return out;
+}
+
 /**
  * Strip regions where a `#` must not be read as a tag:
  *  - fenced code blocks (``` ``` ``` ``` ``` ``` / `~~~ ... ~~~`), and
@@ -135,6 +206,7 @@ export function extractWikilinks(body: string): string[] {
  * - `subject` : frontmatter `subject`, else the top-level folder of `path`.
  * - `tags`    : frontmatter `tags` merged with inline body `#tags` (deduped).
  * - wikilinks : `[[Target]]` / `[[Target|alias]]` / `[[Target#heading]]` targets.
+ * - imageEmbeds : `![[img.png]]` / `![alt](img.png)` references as written.
  * - body      : note content with frontmatter removed.
  */
 export function parseNote(path: string, raw: string): ParsedNote {
@@ -161,6 +233,7 @@ export function parseNote(path: string, raw: string): ParsedNote {
     tags: mergeTags(normalizeTags(frontmatter.tags), extractInlineTags(bodyMarkdown)),
     bodyMarkdown,
     wikilinks: extractWikilinks(bodyMarkdown),
+    imageEmbeds: extractImageEmbeds(bodyMarkdown),
     frontmatter,
   };
 }
